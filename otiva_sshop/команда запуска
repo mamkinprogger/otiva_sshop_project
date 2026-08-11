@@ -1,0 +1,1 @@
+python -m uvicorn otiva_shop.asgi:application

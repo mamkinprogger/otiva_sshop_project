@@ -1,8 +1,8 @@
 import time
 
-from otiva_shop.misc.celery import app
+from app.misc.celery import celery_client
 
-@app.task
+@celery_client.task
 def very_long_task():
     time.sleep(60)
     return "Very long task"

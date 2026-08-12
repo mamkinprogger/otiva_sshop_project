@@ -1,6 +1,6 @@
 import os
 
-from otiva_shop.settings import read_secret, DOCKER_START_APP
+from app.settings import read_secret, DOCKER_START_APP
 
 REDIS_HOST = 'redis' if DOCKER_START_APP else 'localhost'
 REDIS_PORT = os.getenv("REDIS_PORT")

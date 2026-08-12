@@ -1,6 +1,6 @@
 import sys
 
-from otiva_shop.settings import TIME_ZONE, REDIS_BROKER
+from app.settings import TIME_ZONE, REDIS_BROKER
 
 start_argv = sys.argv
 

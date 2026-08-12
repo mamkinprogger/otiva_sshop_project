@@ -2,20 +2,20 @@ import os
 
 from celery import Celery
 
-from otiva_shop.settings import CELERY
+from app.settings import CELERY
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE',
-                      'otiva_shop.settings' )
+                      'app.settings' )
 
-app = Celery('otiva_shop')
-app.config_from_object(CELERY)
+celery_client = Celery('otiva_shop')
+celery_client.config_from_object(CELERY)
 
 # загрузить все task модули из
 # всех зарегистрированных django apps'ov
-app.autodiscover_tasks()
+celery_client.autodiscover_tasks()
 
 
-@app.task(bind=True)
+@celery_client.task(bind=True)
 def debug_task(self):
     print(f'Request: {self.request!r}')
     return 1

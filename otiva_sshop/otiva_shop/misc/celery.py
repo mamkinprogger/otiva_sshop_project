@@ -1,18 +1,17 @@
 import os
 
+from celery import Celery
+
 from otiva_shop.settings import CELERY
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE',
                       'otiva_shop.settings' )
 
-from celery import Celery
-
-# from otiva_shop.settings import CELERY
-
 app = Celery('otiva_shop')
 app.config_from_object(CELERY)
 
-# загрузить все task модули из всех зарегистрированных django apps'ov
+# загрузить все task модули из
+# всех зарегистрированных django apps'ov
 app.autodiscover_tasks()
 
 

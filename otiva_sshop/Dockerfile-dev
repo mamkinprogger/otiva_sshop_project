@@ -1,0 +1,20 @@
+FROM python:3.13-slim
+
+WORKDIR /usr/src/otiva_sshop
+
+RUN apt-get update && apt-get install -y netcat-openbsd
+
+ENV PYTHONUNBUFFERED=1
+
+RUN pip install --upgrade pip
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN sed -i 's/\r$//g' /usr/src/otiva_sshop/dj-entrypoint-dev.sh
+RUN chmod +x /usr/src/otiva_sshop/dj-entrypoint-dev.sh
+
+ENTRYPOINT [ "./dj-entrypoint-dev.sh" ]

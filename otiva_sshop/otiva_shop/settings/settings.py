@@ -10,10 +10,18 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
+
+def read_secret(secret_name):
+    try:
+        with open(f'/run/secrets/{secret_name}') as f:
+            return f.read().strip()
+    except:
+        return None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -81,10 +89,18 @@ WSGI_APPLICATION = 'otiva_shop.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+
+DOCKER_START_APP = 'PycharmProjects' not in sys.argv[0].split(os.sep)
+
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB'),
+        'USER': os.getenv('POSTGRES_USER'),
+        'PASSWORD': read_secret('pg_password') or os.getenv('POSTGRES_PASSWORD'),
+        'HOST': 'db' if DOCKER_START_APP else 'localhost',
+        'PORT': os.getenv('POSTGRES_PORT'),
     }
 }
 

@@ -1,0 +1,81 @@
+services:
+  web:
+    build:
+      context: ./otiva_sshop
+      dockerfile: Dockerfile-dev
+    image: django-app-dev:1.0.0
+    container_name: django-app
+    command: python manage.py runserver 0.0.0.0:8000
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:8000:8000
+    env_file:
+      - ./otiva_sshop/.env
+    depends_on:
+      - db
+      - redis
+    networks:
+      - otiva_shop_network
+
+
+  db:
+    image: postgres:17-alpine
+    container_name: db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=otiva_shop-mamk
+      - POSTGRES_PASSWORD=otiva_shop-mamk
+      - POSTGRES_DB=otiva_shop-db
+    volumes:
+      - pg_data:/var/lib/postgresql/data/
+    networks:
+      - otiva_shop_network
+
+
+  celery:
+    image: django-app-dev:1.0.0
+    container_name: celery
+    entrypoint: []
+    command: celery -A otiva_shop.misc.celery worker --loglevel=info
+    restart: unless-stopped
+    env_file:
+      - ./otiva_sshop/.env
+    depends_on:
+      - web
+    networks:
+      - otiva_shop_network
+
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: redis-server --requirepass otiva_shop_redispass
+    volumes:
+      - redis_data:/data/
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - otiva_shop_network
+
+
+  flower:
+    image: django-app-dev:1.0.0
+    container_name: flower
+    command: celery -A otiva_shop.misc.celery flower
+    entrypoint: []
+    restart: unless-stopped
+    depends_on:
+      - celery
+    ports:
+      - "5555:5555"
+    networks:
+      - otiva_shop_network
+
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  otiva_shop_network:

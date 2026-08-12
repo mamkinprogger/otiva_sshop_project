@@ -1,13 +1,15 @@
 import sys
 
-from otiva_shop.settings import TIME_ZONE
+from otiva_shop.settings import TIME_ZONE, REDIS_BROKER
 
-TESTING = 'test' in sys.argv
-TESTING = TESTING or 'test_coverage' in sys.argv or 'pytest' in sys.modules
+start_argv = sys.argv
+
+TESTING = 'test' in start_argv
+TESTING = TESTING or 'test_coverage' in start_argv or 'pytest' in sys.modules
 
 
 CELERY = {
-    "broker_url": "redis://localhost:6379/1",
+    "broker_url": REDIS_BROKER,
     # синхронное выполнение задачи при тестировании
     "task_always_eager": TESTING,
     # временная зона для планировщика

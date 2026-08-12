@@ -1,6 +1,6 @@
 import time
 
-from otiva_shop.misc import app
+from otiva_shop.misc.celery import app
 
 @app.task
 def very_long_task():

@@ -6,4 +6,4 @@ from chat.utils import create_correct_msg
 
 async def send_message_from_storage(msg):
     pass
-    print("пришло")
+    print(msg)

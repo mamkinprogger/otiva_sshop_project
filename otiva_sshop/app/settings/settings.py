@@ -16,6 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
+
 def read_secret(secret_name):
     try:
         with open(f'/run/secrets/{secret_name}') as f:
@@ -51,10 +52,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    'django_celery_results',
-
     'main',
     'chat',
+    'users',
+    'goods'
 ]
 
 MIDDLEWARE = [
@@ -91,7 +92,6 @@ WSGI_APPLICATION = 'app.wsgi.application'
 
 
 DOCKER_START_APP = 'PycharmProjects' not in sys.argv[0].split(os.sep)
-
 
 DATABASES = {
     'default': {

@@ -45,6 +45,18 @@ services:
     networks:
       - otiva_shop_network
 
+#  celery-beat:
+#    image: django-app-dev:1.0.0
+#    container_name: celery-beat
+#    entrypoint: []
+#    command: celery -A app.misc.celery beat --loglevel=info
+#    restart: unless-stopped
+#    env_file:
+#      - ./otiva_sshop/.env
+#    depends_on:
+#      - web
+#    networks:
+#      - otiva_shop_network
 
   redis:
     image: redis:7.2-alpine

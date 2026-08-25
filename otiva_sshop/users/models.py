@@ -2,6 +2,8 @@ from django.db import models
 
 from app.db.mixin import TimeStampMixin
 
+class ClientPermissionError(RuntimeError):
+    pass
 
 class Managers(TimeStampMixin):
     """managers data"""
@@ -13,11 +15,17 @@ class Managers(TimeStampMixin):
 
     """month states"""
     sales = models.PositiveSmallIntegerField(default=0, verbose_name="Успешные продажи")
-    chats = models.JSONField(default=list, null=True, blank=True, verbose_name="Закрепленные чаты за менеджером")
-    calls = models.PositiveIntegerField(default=0, verbose_name="Звонки")
-    missed_calls = models.PositiveIntegerField(default=0, verbose_name="Пропущенные звонки")
-    time_waiting_client = models.PositiveBigIntegerField(default=0, verbose_name="Суммарное время в секундах ожидания клиента")
-    received_messages = models.PositiveIntegerField(default=0, verbose_name="Полученные сообщения")
+    chats_count = models.PositiveSmallIntegerField(default=0, verbose_name="Количество чатов за этот месяц")
+    calls = models.PositiveSmallIntegerField(default=0, verbose_name="Звонки")
+    missed_calls = models.PositiveSmallIntegerField(default=0, verbose_name="Пропущенные звонки")
+    time_waiting_client = models.PositiveIntegerField(default=0, verbose_name="Суммарное время в минутах ожидания клиента")
+    count_time_waiting_client = models.PositiveIntegerField(default=1, verbose_name="count_time_waiting_client")
+
+    """total states"""
+    sales_total = models.PositiveIntegerField(default=0, verbose_name="Всего успешных продаж")
+    calls_total = models.PositiveIntegerField(default=0, verbose_name="Звонков всего")
+    missed_calls_total = models.PositiveIntegerField(default=0, verbose_name="Пропущенные звонки")
+    chats_count_total = models.PositiveIntegerField(default=0, verbose_name="Количество чатов всего")
 
 
     class Meta:
@@ -39,11 +47,14 @@ class Clients(TimeStampMixin):
     phone = models.CharField(max_length=100, null=True, blank=True, verbose_name="Телефон клиента") # шифровать
     personal_discount = models.DecimalField(default=0.00, max_digits=4, decimal_places=2, verbose_name="Персональная скидка в %")
 
+    emails_history = models.TextField(default='', blank=True, verbose_name="emails_history")
+
     pinned_manager = models.ForeignKey(
         to=Managers,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        to_field='manager_id',
     )
 
     class Meta:

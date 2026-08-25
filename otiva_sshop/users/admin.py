@@ -1,7 +1,13 @@
 from django.contrib import admin
 
+from chat.models import ClientsChatAvito
 from users.models import Managers, Clients
 
+
+class ClientChatsAvitoTabAdmin(admin.TabularInline):
+    model = ClientsChatAvito
+    fields = ["chat_id"]
+    extra = 0
 
 class FullNameMixin:
     @staticmethod
@@ -36,7 +42,7 @@ class ManagersAdmin(FullNameMixin, admin.ModelAdmin):
     @admin.display(description="Среднее время ожидания клиента")
     def message_lag(self, obj):
         sum_time = obj.time_waiting_client
-        messages = obj.received_messages
+        messages = obj.count_time_waiting_client
 
         if 0 in [sum_time, messages]:
             return "0"
@@ -56,6 +62,8 @@ class ClientsAdmin(FullNameMixin, admin.ModelAdmin):
     search_fields = ["client_id", "name", "lastname", 'pinned_manager__manager_id']
     list_filter = ["name", "lastname", "personal_discount"]
     list_editable = ["name", "lastname", "personal_discount"]
+
+    inlines = [ClientChatsAvitoTabAdmin]
 
     @admin.display(description="Имя клиента")
     def client_fullname(self, obj) -> str:

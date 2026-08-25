@@ -1,1 +1,7 @@
 python -m uvicorn app.asgi:application
+
+--reload
+
+celery -A app.misc.celery worker --loglevel=info --pool=solo
+celery -A app.misc.celery beat --loglevel=info --pool=solo
+celery -A app.misc.celery flower

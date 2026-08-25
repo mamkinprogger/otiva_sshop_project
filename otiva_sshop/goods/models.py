@@ -48,7 +48,7 @@ class AvitoCategories(TimeStampMixin):
 class Products(TimeStampMixin):
     """otiva_app fields"""
     name = models.CharField(max_length=200, unique=True, null=False, verbose_name='Название')
-    slug = models.SlugField(max_length=200, unique=True, null=False, verbose_name="site_URL")
+    slug = models.SlugField(max_length=200, unique=True, null=True, verbose_name="site_URL")
     special = models.BooleanField(default=False, verbose_name='Уникальный товар')
 
     image = models.ImageField(upload_to="goods_images", blank=True, null=True, verbose_name="Фотка")

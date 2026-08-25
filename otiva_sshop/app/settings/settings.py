@@ -26,15 +26,16 @@ def read_secret(secret_name):
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY')
-
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", False)
+
+
+ROOT_EMAIL = os.getenv("ROOT_EMAIL")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+EMAIL_DOMAIN_NAME = os.getenv("MAIL_DOMAIN_NAME")
+
+AVITO_STORE_ID = os.getenv("AVITO_STORE_ID")
+
 
 
 if os.getenv('ALLOWED_HOSTS'):
@@ -91,7 +92,7 @@ WSGI_APPLICATION = 'app.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 
-DOCKER_START_APP = 'PycharmProjects' not in sys.argv[0].split(os.sep)
+DOCKER_START_APP = False
 
 DATABASES = {
     'default': {
@@ -203,6 +204,15 @@ LOGGING = {
             "filters": ["require_debug_false"],
             "formatter": "verbose"
         },
+        "celery_file": {
+            "level": LOG_LEVEL,
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": 'logs/chat_logs_file.log',
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "filters": ["require_debug_false"],
+            "formatter": "verbose"
+        },
     },
     'root': {
         'handlers': ['console', 'root_file'],
@@ -213,6 +223,10 @@ LOGGING = {
             "propagate": True,
         },
         "chat_logger": {
+            "handlers": ["console", "chat_file"],
+            "propagate": False,
+        },
+        "celery_logger": {
             "handlers": ["console", "chat_file"],
             "propagate": False,
         }

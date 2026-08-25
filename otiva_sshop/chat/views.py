@@ -13,6 +13,8 @@ from chat.utils import MessageFromWebhook, MessageFieldsException
 
 logger = logging.getLogger("chat_logger")
 
+# TODO don't overload your email
+
 
 async def assign_manager(
         *,

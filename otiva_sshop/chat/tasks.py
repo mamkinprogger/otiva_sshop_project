@@ -7,6 +7,8 @@ from goods.db_orm import orm_get_avito_product
 
 logger = logging.getLogger("celery_logger")
 
+# TODO разобраться с retries
+
 
 @celery_client.task(
     max_retries=5,

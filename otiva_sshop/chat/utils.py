@@ -1,5 +1,4 @@
 import logging
-import os
 import string
 
 import smtplib
@@ -18,14 +17,23 @@ class MessageFieldsException(KeyError):
 
 
 class MessageFromWebhook:
-    def __init__(self, msg: dict | None = None) -> None:
+    def __init__(
+            self,
+            msg: dict = None,
+            client_id: int = None,
+            chat_id: str = None,
+            sending_time: int = None,
+            call: str = None,
+            item_id: int = None,
+            text: str = None,
+            ):
         """update fields if msg passed"""
-        self.client_id = None
-        self.chat_id = None
-        self.sending_time = None
-        self.call = None
-        self.item_id = None
-        self.message = None
+        self.client_id = client_id
+        self.chat_id = chat_id
+        self.sending_time = sending_time
+        self.call = call
+        self.item_id = item_id
+        self.text = text
         if msg:
             if not isinstance(msg, dict):
                 raise MessageFieldsException("msg must be a dict")
@@ -42,37 +50,36 @@ class MessageFromWebhook:
             self.sending_time = msg["created"]
             self.item_id = msg["item_id"]
             if msg["content"]:
-                self.message = msg["content"].get("text", None)
+                self.text = msg["content"].get("text", None)
                 call = msg["content"].get("call", None)
                 if call:
                     self.call = call["status"]
         except (KeyError, TypeError) as e:
-            raise MessageFieldsException(f"В полях сообщения ошибка: {repr(e)}")
+            raise MessageFieldsException(f"В полях сообщения ошибка: {repr(e)}") from None
 
-    def correct_chat_id(self, chat_id: str | None = None) -> bool:
-        field = self.chat_id if chat_id is None else chat_id
-        if not isinstance(field, str) or not field:
+    def correct_chat_id(self) -> bool:
+        if not isinstance(self.chat_id, str) or not self.chat_id:
             return False
-        for i in field:
+        for i in self.chat_id:
             if i not in (string.ascii_letters + string.digits + "-_"):
                 return False
         return True
 
-    def correct_call(self, call: str | None = None) -> bool:
-        field = self.call if call is None else call
-        if field is None:
+    def correct_call(self) -> bool:
+        if self.call is None:
             return True
-        if field:
-            return isinstance(field, str) and field.isalpha()
+        if self.call:
+            return isinstance(self.call, str) and self.call.isalpha()
         return False
 
-    def correct_positive_int_value(self, value: int) -> bool:
+    @staticmethod
+    def correct_positive_int_value(value: int) -> bool:
         return type(value) is int and value > 0
 
     def create(self) -> dict | bool:
         """create message_data for manager"""
         if None in (self.client_id, self.chat_id, self.sending_time):
-            raise RuntimeError("Message_data didn't passed")
+            raise MessageFieldsException("The key required to create a message is missing")
 
         correct_msg = {
             "client_id": self.client_id,
@@ -80,6 +87,7 @@ class MessageFromWebhook:
             "item_id": self.item_id,
             "sending_time": self.sending_time,
             "call": self.call,
+            "text": self.text
         }
         if not all([
             self.correct_positive_int_value(self.client_id),
@@ -87,6 +95,7 @@ class MessageFromWebhook:
             self.correct_positive_int_value(self.item_id) if self.item_id else True,
             self.correct_chat_id(),
             self.correct_call(),
+            isinstance(self.text, str) if self.text else True,
         ]):
             logger.error(f"Сообщение некорректно {correct_msg}")
             return False
@@ -110,6 +119,7 @@ class SendEmail:
         self.text = text
 
     def create_mail(self, prev_mails: list[str], **kwargs) -> MIMEMultipart:
+        """Create email with MIME"""
         msg = MIMEMultipart()
         msg['Message-ID'] = make_msgid(EMAIL_DOMAIN_NAME)
         msg['From'] = self.from_email if not kwargs else kwargs["from_email"]
@@ -132,7 +142,7 @@ class SendEmail:
             prev_mails_ids: list[str],
             smtp_server="smtp.yandex.com",
             port=465,
-            timeout=5
+            timeout=7
     ) -> str:
         """
         Send an email with an SMTP server. Establishes connection immediately over ssl

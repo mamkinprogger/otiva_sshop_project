@@ -12,7 +12,14 @@ from app.settings import ROOT_EMAIL, EMAIL_PASSWORD, EMAIL_DOMAIN_NAME
 
 logger = logging.getLogger("chat_logger")
 
+
 class MessageFieldsException(KeyError):
+    pass
+
+class CreateMailException(TypeError):
+    pass
+
+class InvalidMailFieldException(RuntimeError):
     pass
 
 
@@ -102,10 +109,87 @@ class MessageFromWebhook:
         return correct_msg
 
     def __str__(self):
-        return f"{self.sending_time}"
+        return f"{self.chat_id}:{self.sending_time}"
 
 
-class SendEmail:
+class SMTPEmailSender:
+    def __init__(
+            self,
+            from_email: str,
+            password: str,
+            smtp_server: str = "smtp.yandex.com",
+            port: int = 465,
+            timeout: int = 7,
+    ):
+        self.from_email = from_email
+        self.password = password
+        self.smtp_server = smtp_server
+        self.port = port
+        self.timeout = timeout
+
+        self.client: smtplib.SMTP_SSL | None = None
+        self.ctx = ssl.create_default_context()
+
+    def connect(self) -> None:
+        """Open SSL connection to server"""
+        self.client = smtplib.SMTP_SSL(
+            self.smtp_server,
+            self.port,
+            context=self.ctx,
+            timeout=self.timeout,
+        )
+
+        self.client.login(
+            self.from_email,
+            self.password,
+        )
+
+    def send(self, mail: MIMEMultipart) -> None:
+        """
+        Send mail on server
+
+        Don't recommended use without context manager
+        """
+        if self.client is None:
+            self.connect()
+
+        try:
+            self.client.sendmail(
+                self.from_email,
+                mail["To"],
+                mail.as_string(),
+            )
+        except smtplib.SMTPServerDisconnected:
+            logger.warning(
+                "SMTP connection lost, reconnecting..."
+            )
+
+            self.close()
+            self.connect()
+
+            self.client.sendmail(
+                self.from_email,
+                mail["To"],
+                mail.as_string(),
+            )
+
+    def close(self) -> None:
+        if self.client is not None:
+            try:
+                self.client.quit()
+            finally:
+                self.client = None
+
+    def __enter__(self) -> "SMTPEmailSender":
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        self.close()
+        return False
+
+
+class ShopEmail:
     def __init__(
             self,
              to_email: str = None,
@@ -115,49 +199,107 @@ class SendEmail:
         self.from_email = ROOT_EMAIL
         self.password = EMAIL_PASSWORD
         self.to_email = to_email
-        self.subject = subject
+        self.subject = subject if subject else ""
         self.text = text
 
-    def create_mail(self, prev_mails: list[str], **kwargs) -> MIMEMultipart:
+
+    @staticmethod
+    def valid_mails_ids(mails: list[str]) -> None:
+        """Validation of emails ids"""
+        valid_chars = set(string.ascii_letters + string.digits + ".@<>")
+
+        if not isinstance(mails, list):
+            raise CreateMailException("mails is not a list")
+        elif len(mails) == 0:
+            raise CreateMailException("not mails in list")
+
+        for mail_id in mails:
+            if not isinstance(mail_id, str):
+                raise CreateMailException("mail_id is not a str")
+
+            mail_id = mail_id.strip()
+            if not mail_id:
+                raise InvalidMailFieldException("mail_id is empty")
+
+            if not all(char in valid_chars for char in mail_id):
+                raise InvalidMailFieldException("mail_id contain invalid characters")
+
+    @staticmethod
+    def valid_email(email: str) -> bool:
+        valid_chars = set(string.ascii_letters + string.digits + ".")
+        if not isinstance(email, str):
+            raise CreateMailException("email is not a str")
+
+        email_data = email.split("@")
+        if len(email_data) != 2 or len(email_data[1].rsplit(".", 1)) != 2:
+            return False
+
+        email_name, email_domain = email_data
+        if not email_name or email_name[0] in string.digits:
+            return False
+        if not all(char in valid_chars for char in email_name):
+            return False
+
+        return True
+
+    def create_mail(self, prev_mails: list[str] = None,) -> MIMEMultipart:
         """Create email with MIME"""
+        if not isinstance(self.subject, str):
+            raise CreateMailException("subject is not a str")
+
+        if not all([
+            self.valid_email(self.to_email),
+            not self.text or isinstance(self.text, str)
+        ]):
+            raise InvalidMailFieldException("Head of email is invalid")
+
         msg = MIMEMultipart()
         msg['Message-ID'] = make_msgid(EMAIL_DOMAIN_NAME)
-        msg['From'] = self.from_email if not kwargs else kwargs["from_email"]
-        msg['To'] = self.to_email if not kwargs else kwargs["to_email"]
-        sbj = self.subject if not kwargs else kwargs["subject"]
+        msg['From'] = self.from_email
+        msg['To'] = self.to_email
+        sbj = self.subject
+
+
         if prev_mails:
-            msg["Subject"] = f"Re: {sbj}"
-            msg['In-Reply-To'] = prev_mails[-1]
-            msg['References'] = " ".join(prev_mails)
+            try:
+                self.valid_mails_ids(prev_mails)
+                msg["Subject"] = f"Re: {sbj}"
+                msg['In-Reply-To'] = prev_mails[-1]
+                msg['References'] = " ".join(prev_mails)
+            except (CreateMailException, InvalidMailFieldException):
+                logger.warning(f"Не удалось прикрепить предыдущие сообщения для {msg["Message-ID"]}")
+                msg["Subject"] = sbj
         else:
             msg["Subject"] = sbj
 
-        if self.text or kwargs:
-            msg.attach(MIMEText(self.text, 'plain')) if self.text else kwargs["text"]
+        if self.text:
+            msg.attach(MIMEText(self.text, 'plain'))
         return msg
-
 
     def send_email_from_yandex(
             self,
-            prev_mails_ids: list[str],
-            smtp_server="smtp.yandex.com",
-            port=465,
-            timeout=7
-    ) -> str:
+            emails: list[MIMEMultipart],
+    ) -> list[tuple[str, bool]]:
         """
         Send an email with an SMTP server. Establishes connection immediately over ssl
-        return mail_id if email was sent successfully
+        return list[tuple[str[mail_id], bool[success]]]
         """
-        mail = self.create_mail(prev_mails_ids)
-        ctx = ssl.create_default_context()
-        try:
-            with smtplib.SMTP_SSL(smtp_server, port, context=ctx, timeout=timeout) as client:
-                client.login(self.from_email, self.password)
-                client.sendmail(self.from_email, self.to_email, mail.as_string())
-            return mail["Message-ID"]
-        except smtplib.SMTPException as smtp_err:
-            logger.error(f'Ошибка с SMTP {smtp_err}')
-            raise RuntimeError("Mail не отправился из-за ошибки с SMTP") from smtp_err
-        except Exception as err:
-            logger.error(f"Непредвиденная ошибка {err}", exc_info=True)
-            raise err
+        smtp_server = "smtp.yandex.com"
+        port = 465
+        timeout = 7
+
+        results = []
+        for email in emails:
+            try:
+                with SMTPEmailSender(self.from_email, self.password, smtp_server, port, timeout) as sender:
+                        sender.send(email)
+                        results.append((email["Message-ID"], True))
+            except smtplib.SMTPException as smtp_err:
+                logger.error(f'Ошибка с SMTP {smtp_err}')
+                results.append((email["Message-ID"], False))
+                raise smtp_err
+            except Exception as err:
+                logger.error(f"Непредвиденная ошибка {err}", exc_info=True)
+                results.append((email["Message-ID"], False))
+                raise err
+        return results

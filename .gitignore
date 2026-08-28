@@ -10,6 +10,7 @@ logs/
 vcs.xml
 
 .env
+.coverage
 sets/
 
 db.sqlite3

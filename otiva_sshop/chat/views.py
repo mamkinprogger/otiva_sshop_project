@@ -115,13 +115,13 @@ async def webhook(request: HttpRequest):
         logger.error(f"Не удалось обработать сообщение: {e}")
     except ClientMessageError as e:
         if "!=" not in e.args[0]:
-            logger.error(f"Нелогичная ошибка: {repr(e)}")
+            logger.warning(f"Нелогичная ошибка: {repr(e)}")
     except (KeyError, TypeError) as e:
-        logger.warning(f"Не удалось положить сообщение от webhook в очередь {repr(e)}")
+        logger.error(f"Не удалось положить сообщение от webhook в очередь {repr(e)}")
         logger.error(f"\nОбъект сообщения\n"
                        f"{request.body}")
     except Exception as e:
-        logger.warning(
+        logger.error(
             f"Не удалось положить сообщение от webhook в очередь Непредвиденная ошибка: {e}",
             exc_info=True
         )

@@ -1,0 +1,17 @@
+[run]
+omit =
+    __init__.py
+    */tests/*
+    */migrations/*
+    apps.py
+    admin.py
+    models.py
+    urls.py
+
+
+[report]
+exclude_lines =
+    if __name__ == .__main__.:
+
+[html]
+directory = htmlcov

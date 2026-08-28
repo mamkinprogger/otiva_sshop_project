@@ -13,10 +13,12 @@ click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
 colorama==0.4.6
+coverage==7.15.4
 Django==5.2.17
 executing==2.2.1
 flower==2.0.1
 frozenlist==1.8.0
+h11==0.16.0
 humanize==4.16.0
 idna==3.18
 iniconfig==2.3.0
@@ -38,6 +40,8 @@ psycopg2-binary==2.9.12
 pure_eval==0.2.3
 Pygments==2.20.0
 pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 pytz==2026.3.post1
@@ -50,6 +54,7 @@ traitlets==5.16.1
 typing_extensions==4.16.0
 tzdata==2026.3
 tzlocal==5.4.4
+uvicorn==0.52.3
 vine==5.1.0
 wcwidth==0.8.2
 yarl==1.24.5

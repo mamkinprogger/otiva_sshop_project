@@ -30,7 +30,7 @@ def orm_update_manager_load(
         call: str | None,
         new_chat: bool,
         get_emails=True,
-) -> tuple[int, list] | int:
+) -> tuple[int, list[str]] | int:
     """
     Updating manager load
 
@@ -67,7 +67,10 @@ def orm_update_manager_load(
     manager_data.save()
 
     if get_emails:
-        return (client.client_id, []) if just_added else (client.client_id, client.emails_history.split(":"))
+        if just_added:
+            return client.client_id, []
+        else:
+            return client.client_id, [i.strip() for i in client.emails_history.split(":") if i.strip()]
     else:
         return client_id
 

@@ -156,7 +156,7 @@ else:
 
 
 
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'ERROR')
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'WARNING')
 
 LOGGING = {
     "version": 1,

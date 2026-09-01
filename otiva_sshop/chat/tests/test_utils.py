@@ -27,6 +27,8 @@ def correct_message_factory():
                     "target_user_id": 94235311
                 }
             }
+        else:
+            msg["content"] = {"call": None}
         if text:
             msg["content"]["text"] = "Something text"
 
@@ -43,6 +45,9 @@ class TestMessageFromWebhook:
         assert isinstance(res.get("sending_time"), int)
         assert isinstance(res.get("call"), str)
         assert isinstance(res.get("item_id"), int)
+
+        str_res = MessageFromWebhook(correct_message_factory(with_call=True, item_id=True)).create_str()
+        assert isinstance(str_res, str)
 
     def test_create_message_data_for_manager_without_call(self, correct_message_factory):
         res_list = [

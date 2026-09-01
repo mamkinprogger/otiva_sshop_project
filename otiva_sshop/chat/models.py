@@ -4,10 +4,6 @@ from app.db.mixin import TimeStampMixin
 from users.models import Clients
 
 
-class ClientMessageError(RuntimeError):
-    pass
-
-
 class ClientsChatAvito(TimeStampMixin):
     chat_id = models.CharField(max_length=200, unique=True, null=False, verbose_name="Авито-Чат клиента")
 

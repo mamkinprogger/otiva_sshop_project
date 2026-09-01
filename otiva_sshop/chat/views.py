@@ -4,10 +4,9 @@ import logging
 from django.http import HttpResponse, Http404, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 
-from app.misc.redis_misc import redis_client
+from app.misc.redis_misc import redis_client, redis_aclient_broker
 from app.settings import AVITO_STORE_ID
 from chat.db_orm import contact_info_manager_from_client
-from chat.models import ClientMessageError
 from chat.tasks import send_message_to_manager
 from chat.utils import MessageFromWebhook, MessageFieldsException
 
@@ -15,6 +14,8 @@ logger = logging.getLogger("chat_logger")
 
 # TODO don't overload your email
 
+class ClientMessageError(RuntimeError):
+    pass
 
 async def assign_manager(
         *,
@@ -62,28 +63,34 @@ async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]
     """Send email to the manager assigned to the client who sent the message"""
     pinned_manager = await redis_client.get(msg.chat_id)
     client = await contact_info_manager_from_client(msg.client_id)
-    if pinned_manager and not client:
-        raise ClientMessageError(f"Chat {msg.chat_id} with client is open, but the client does not exist")
+    # if pinned_manager and not client:
+    #     raise ClientMessageError(f"Chat {msg.chat_id} with client is open, but the client does not exist")
 
     if pinned_manager:
-        if client["manager_id"] is None:
+        if client and client["manager_id"] is None:
             raise ClientMessageError(f"A client without a manager cannot write to an existing chat.")
 
         pinned_manager, received_time = pinned_manager.split(b":")
-        target_manager, manager_email = await assign_manager(**client)
+        target_manager, manager_email = await assign_manager(**client, managers_load=managers) if client else \
+                                        await assign_manager(managers_load=managers)
         received_time = received_time if int(received_time) else str(msg.sending_time).encode()
         new_chat = False
 
         if target_manager != pinned_manager:
-            logger.error("Менеджер активного чата в redis != менеджеру client")
-            raise ClientMessageError("The manager assigned to the chat != the client's manager")
+            if client:
+                logger.error("Менеджер активного чата в redis != менеджеру client")
+                raise ClientMessageError("The manager assigned to the chat != the client's manager")
+            target_manager = pinned_manager
     else:
         target_manager, manager_email = await assign_manager(**client, managers_load=managers) if client else \
                                         await assign_manager(managers_load=managers)
         received_time = str(msg.sending_time).encode()
         new_chat = True if not client or not client["manager_id"] else False
 
-    send_message_to_manager.delay(int(target_manager), manager_email.decode(), msg.create(), new_chat)
+    msg_to_queue = f"{msg.chat_id=};{new_chat=};{msg.create_str()}"
+    await redis_aclient_broker.lpush(target_manager, msg_to_queue)
+
+    send_message_to_manager.delay(int(target_manager), manager_email.decode())
 
     if new_chat:
         await redis_client.hset("managers", target_manager, int(managers[target_manager]) + 1)

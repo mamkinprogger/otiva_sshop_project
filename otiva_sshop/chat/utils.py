@@ -83,7 +83,7 @@ class MessageFromWebhook:
     def correct_positive_int_value(value: int) -> bool:
         return type(value) is int and value > 0
 
-    def create(self) -> dict | bool:
+    def create(self) -> dict | str | bool :
         """create message_data for manager"""
         if None in (self.client_id, self.chat_id, self.sending_time):
             raise MessageFieldsException("The key required to create a message is missing")
@@ -107,6 +107,9 @@ class MessageFromWebhook:
             logger.error(f"Сообщение некорректно {correct_msg}")
             return False
         return correct_msg
+
+    def create_str(self):
+        return '~'.join(f"{k}:{v}" for k, v in self.create().items())
 
     def __str__(self):
         return f"{self.chat_id}:{self.sending_time}"
@@ -282,7 +285,7 @@ class ShopEmail:
     ) -> list[tuple[str, bool]]:
         """
         Send an email with an SMTP server. Establishes connection immediately over ssl
-        return list[tuple[str[mail_id], bool[success]]]
+        :return: list[tuple[str[mail_id], bool[success]]]
         """
         smtp_server = "smtp.yandex.com"
         port = 465

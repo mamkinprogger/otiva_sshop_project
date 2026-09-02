@@ -116,25 +116,29 @@ def create_emails_data(manager: int, messages: list[dict]) -> list[tuple[int, st
 
 
 @celery_client.task(
+    bind=True,
     ignore_result=True,
     max_retries=5,
     default_retry_delay=10,
     retry_jitter=True,
+    reject_on_worker_lost=True,
 )
-def send_message_to_manager(manager: int, manager_email: str):
-    try:
-        s_manager = str(manager)
-        if not redis_client_broker.lrange(s_manager, 0, -1):
-            print("no messages")
-            return
-        elif not redis_client_broker.setnx(f"{manager}_lock", 1):
-            print("locked")
-            raise RuntimeError("locked, waiting 10 secs")
+def send_message_to_manager(self, manager: int, manager_email: str):
+    s_manager = str(manager)
+    lock_key = f"{manager}_lock"
 
+    if redis_client_broker.llen(s_manager) == 0:
+        logger.info(f"Messages for {manager}  already send")
+        return
+    elif not redis_client_broker.set(lock_key, 1, nx=True, ex=60):
+        logger.info(f"Manager {manager} is locked, retrying later")
+        raise self.retry(countdown=8)
+
+    try:
         messages = choose_messages(s_manager)
         emails_data = create_emails_data(manager, messages)
         send_on_email(manager_email, emails_data)
-        redis_client_broker.delete(f"{s_manager}_lock")
     except Exception as e:
         logger.error(repr(e), exc_info=True)
-        redis_client_broker.delete(f"{manager}_lock")
+    finally:
+        redis_client_broker.delete(lock_key)

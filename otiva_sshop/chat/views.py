@@ -113,7 +113,7 @@ async def webhook(request: HttpRequest):
         message = MessageFromWebhook(message_data["payload"]["value"])
         sender = str(message.client_id).encode()
 
-        if sender in managers or sender == AVITO_STORE_ID:
+        if sender in managers or sender == str(AVITO_STORE_ID).encode():
             await manager_response_lag(message)
         else:
             await identify_manager(message, managers)

@@ -34,7 +34,7 @@ ROOT_EMAIL = os.getenv("ROOT_EMAIL")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_DOMAIN_NAME = os.getenv("MAIL_DOMAIN_NAME")
 
-AVITO_STORE_ID = os.getenv("AVITO_STORE_ID")
+AVITO_STORE_ID = int(os.getenv("AVITO_STORE_ID"))
 
 
 

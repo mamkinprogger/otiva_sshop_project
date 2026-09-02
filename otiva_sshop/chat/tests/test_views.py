@@ -333,24 +333,6 @@ class TestIdentifyManager:
         assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=False".encode()
         assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
 
-    async def test_message_already_read_manager_create_chat(
-            self,
-            monkeypatch,
-            pd_redis_client,
-            pd_redis_aclient_broker,
-            correct_message_factory
-    ):
-        self._celery_mock(monkeypatch)
-        self._client_mock(monkeypatch, None)
-
-        msg = MessageFromWebhook(correct_message_factory(read=True))
-        managers = await pd_redis_client.hgetall("managers")
-
-        await identify_manager(msg, managers)
-
-        assert await pd_redis_client.get(msg.chat_id) == "11111:0".encode()
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=True".encode()
-
 
 class TestWebhook:
     @staticmethod
@@ -358,8 +340,86 @@ class TestWebhook:
         return "http://localhost:8000/webhook/"
 
     @pytest.mark.parametrize("method", ["GET", "PUT", "PATCH", "DELETE"])
-    async def test_webhook_returns_404_for_non_post(self, async_client, method):
-        url = self._get_url()
-        response = await getattr(async_client, method.lower())(url)
-
+    async def test_returns_404_for_non_post(self, async_client, method):
+        response = await getattr(async_client, method.lower())(self._get_url())
         assert response.status_code == 404
+
+    async def test_no_message(self, monkeypatch, async_client):
+        message_lag_mock = AsyncMock()
+        monkeypatch.setattr(views, "manager_response_lag", message_lag_mock)
+        identify_manager_mock = AsyncMock()
+        monkeypatch.setattr(views, "identify_manager", identify_manager_mock)
+
+        data = {
+            "payload": {
+                "type": "message",
+                "value": {}
+            },
+        }
+
+        response = await async_client.post(self._get_url(), data=data, content_type="application/json")
+
+        assert response.status_code == 200
+        message_lag_mock.assert_not_awaited()
+        identify_manager_mock.assert_not_awaited()
+
+
+    @pytest.mark.parametrize("sender", [
+        11111,
+        253428356
+    ], ids=["manager_id", "store_id"])
+    async def test_manager_send_message(
+            self,
+            monkeypatch,
+            async_client,
+            pd_redis_client,
+            correct_message_factory,
+            sender
+    ):
+        monkeypatch.setattr(views, "AVITO_STORE_ID", 253428356)
+        message_lag_mock = AsyncMock()
+        monkeypatch.setattr(views, "manager_response_lag", message_lag_mock)
+        identify_manager_mock = AsyncMock()
+        monkeypatch.setattr(views, "identify_manager", identify_manager_mock)
+
+        msg = correct_message_factory()
+        msg["author_id"] = sender
+        data = {
+            "payload": {
+                "type": "message",
+                "value": msg
+                },
+            }
+        response = await async_client.post(self._get_url(), data=data, content_type="application/json")
+
+        assert response.status_code == 200
+        message_lag_mock.assert_awaited_once()
+        identify_manager_mock.assert_not_awaited()
+
+    async def test_client_send_message(
+            self,
+            monkeypatch,
+            async_client,
+            pd_redis_client,
+            correct_message_factory,
+    ):
+        message_lag_mock = AsyncMock()
+        monkeypatch.setattr(views, "manager_response_lag", message_lag_mock)
+        identify_manager_mock = AsyncMock()
+        monkeypatch.setattr(views, "identify_manager", identify_manager_mock)
+
+        msg = correct_message_factory()
+        msg["author_id"] = 23451
+        data = {
+            "payload": {
+                "type": "message",
+                "value": msg
+                },
+            }
+        response = await async_client.post(self._get_url(), data=data, content_type="application/json")
+
+        assert response.status_code == 200
+        identify_manager_mock.assert_awaited_once()
+        message_lag_mock.assert_not_awaited()
+
+

@@ -60,17 +60,25 @@ def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
     for i in msgs:
         _, new_chat, msg_data = i.split(";", 2)
         message = dict()
+        already_read = False
 
         for field in msg_data.split("~"):
             key, separator, value = field.partition(":")
             if separator:
                 if key in ["client_id", "item_id", "sending_time"]:
                     message[key] = int(value) if value not in ("", "None") else None
+                elif key == "read":
+                    already_read = value != "None"
+                    if already_read:
+                        break
                 else:
                     message[key] = value if value not in ("", "None") else None
             else:
                 text_value = message.get("text", "")
                 message["text"] = text_value + field
+
+        if already_read:  # if message already read don't send it to manager
+            continue
 
         if message["chat_id"] not in viewed:
             message["new_chat"] = new_chat == "new_chat=True"
@@ -82,6 +90,13 @@ def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
 
 
 def create_emails_data(manager: int, messages: list[dict]) -> list[tuple[int, str, list]]:
+    """
+    Create emails
+
+    create topic and get previous emails
+
+    Also update manager load and creating clients if needed
+    """
     emails_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
@@ -101,6 +116,7 @@ def create_emails_data(manager: int, messages: list[dict]) -> list[tuple[int, st
 
 
 @celery_client.task(
+    ignore_result=True,
     max_retries=5,
     default_retry_delay=10,
     retry_jitter=True,

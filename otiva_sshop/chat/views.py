@@ -6,16 +6,16 @@ from django.views.decorators.csrf import csrf_exempt
 
 from app.misc.redis_misc import redis_client, redis_aclient_broker
 from app.settings import AVITO_STORE_ID
-from chat.db_orm import contact_info_manager_from_client
+from chat.db_orm import orm_contact_info_manager_from_client
 from chat.tasks import send_message_to_manager
 from chat.utils import MessageFromWebhook, MessageFieldsException
 
 logger = logging.getLogger("chat_logger")
 
-# TODO don't overload your email
 
 class ClientMessageError(RuntimeError):
     pass
+
 
 async def assign_manager(
         *,
@@ -52,7 +52,7 @@ async def manager_response_lag(msg: MessageFromWebhook):
     if not cached_chat:
         return
     manager, received_time = map(int, cached_chat.split(b":"))
-    waiting_time = abs(msg.sending_time - received_time)//60 if int(received_time) else 0
+    waiting_time = abs(msg.sending_time - received_time)//60 if received_time else 0
 
     await redis_client.set(msg.chat_id, f"{manager}:0", ex=60 * 60 * 24 * 3)
     if waiting_time:
@@ -62,13 +62,13 @@ async def manager_response_lag(msg: MessageFromWebhook):
 async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]):
     """Send email to the manager assigned to the client who sent the message"""
     pinned_manager = await redis_client.get(msg.chat_id)
-    client = await contact_info_manager_from_client(msg.client_id)
-    # if pinned_manager and not client:
+    client = await orm_contact_info_manager_from_client(msg.client_id)
+    # if pinned_manager and not client: # check celery running_tasks, if client is creating don't open this if/else
     #     raise ClientMessageError(f"Chat {msg.chat_id} with client is open, but the client does not exist")
 
     if pinned_manager:
-        if client and client["manager_id"] is None:
-            raise ClientMessageError(f"A client without a manager cannot write to an existing chat.")
+        # if client and client["manager_id"] is None: # check celery running_tasks, if client is creating don't open this if/else
+        #     raise ClientMessageError(f"A client without a manager cannot write to an existing chat.")
 
         pinned_manager, received_time = pinned_manager.split(b":")
         target_manager, manager_email = await assign_manager(**client, managers_load=managers) if client else \
@@ -107,7 +107,7 @@ async def webhook(request: HttpRequest):
 
     try:
         message_data = json.loads(request.body)
-        if message_data["payload"]["type"] != "message":
+        if message_data["payload"]["type"] != "message" or not message_data["payload"]["value"]:
             return HttpResponse()
         managers = await redis_client.hgetall("managers")
         message = MessageFromWebhook(message_data["payload"]["value"])

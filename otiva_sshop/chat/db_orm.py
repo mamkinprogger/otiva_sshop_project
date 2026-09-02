@@ -8,11 +8,12 @@ def orm_update_client_emails_history(client_id: int, emails_history: list[str]) 
     Clients.objects.filter(client_id=client_id).update(emails_history=':'.join(emails_history))
 
 
-async def contact_info_manager_from_client(client_id: int) -> dict | None:
+async def orm_contact_info_manager_from_client(client_id: int) -> dict | None:
     """
     If a manager is already pinned to the client
 
-    return chats of clients, clients manager and clients manager email
+    chats of clients, clients manager and clients manager email
+    :return: {"manager_id": manager_of_client, "manager_email": manager_email"} | None
     """
 
     manager_of_client = await Clients.objects.filter(client_id=client_id). \

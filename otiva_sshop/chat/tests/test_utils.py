@@ -1,39 +1,9 @@
-import random
-import string
-import time
 from email.mime.multipart import MIMEMultipart
 
 import pytest
 
 from chat.utils import MessageFromWebhook, MessageFieldsException, CreateMailException, ShopEmail, \
     InvalidMailFieldException
-
-
-@pytest.fixture
-def correct_message_factory():
-    def create_correct_message(with_call=False, item_id=True, text=True):
-        msg = {
-            "author_id": random.randint(1, 1_000_000_000_000),
-            "chat_id": ''.join(random.choice(string.ascii_letters + string.digits+"-_") for _ in range(30)),
-            "created": int(time.time()),
-            "item_id": random.randint(1, 1_000_000_000_000) if item_id else None,
-            "content": {}
-
-        }
-        if with_call:
-            msg["content"] = {
-                "call": {
-                    "status": "missed",
-                    "target_user_id": 94235311
-                }
-            }
-        else:
-            msg["content"] = {"call": None}
-        if text:
-            msg["content"]["text"] = "Something text"
-
-        return msg
-    return create_correct_message
 
 
 class TestMessageFromWebhook:
@@ -45,6 +15,7 @@ class TestMessageFromWebhook:
         assert isinstance(res.get("sending_time"), int)
         assert isinstance(res.get("call"), str)
         assert isinstance(res.get("item_id"), int)
+        assert res.get("read") is None
 
         str_res = MessageFromWebhook(correct_message_factory(with_call=True, item_id=True)).create_str()
         assert isinstance(str_res, str)

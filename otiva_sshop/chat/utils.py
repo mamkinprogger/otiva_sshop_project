@@ -33,6 +33,7 @@ class MessageFromWebhook:
             call: str = None,
             item_id: int = None,
             text: str = None,
+            read: int = None,
             ):
         """update fields if msg passed"""
         self.client_id = client_id
@@ -40,6 +41,7 @@ class MessageFromWebhook:
         self.sending_time = sending_time
         self.call = call
         self.item_id = item_id
+        self.read = read
         self.text = text
         if msg:
             if not isinstance(msg, dict):
@@ -56,6 +58,7 @@ class MessageFromWebhook:
             self.chat_id = msg["chat_id"]
             self.sending_time = msg["created"]
             self.item_id = msg["item_id"]
+            self.read = msg["read"]
             if msg["content"]:
                 self.text = msg["content"].get("text", None)
                 call = msg["content"].get("call", None)
@@ -94,12 +97,14 @@ class MessageFromWebhook:
             "item_id": self.item_id,
             "sending_time": self.sending_time,
             "call": self.call,
-            "text": self.text
+            "text": self.text,
+            "read": self.read,
         }
         if not all([
             self.correct_positive_int_value(self.client_id),
             self.correct_positive_int_value(self.sending_time),
             self.correct_positive_int_value(self.item_id) if self.item_id else True,
+            self.correct_positive_int_value(self.read) if self.read else True,
             self.correct_chat_id(),
             self.correct_call(),
             isinstance(self.text, str) if self.text else True,

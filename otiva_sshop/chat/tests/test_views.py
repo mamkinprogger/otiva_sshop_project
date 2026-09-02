@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -155,7 +155,7 @@ class TestManagerResponseLag:
 class TestIdentifyManager:
     @staticmethod
     def _celery_mock(monkeypatch):
-        celery_mock = AsyncMock()
+        celery_mock = MagicMock()
         celery_mock.delay.return_value = None
         monkeypatch.setattr(
             views, "send_message_to_manager", celery_mock

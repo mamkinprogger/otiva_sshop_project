@@ -1,5 +1,6 @@
 import logging
 import concurrent.futures
+import uuid
 
 from app.misc.celery import celery_client
 from app.misc.redis_misc import redis_client_broker
@@ -9,6 +10,22 @@ from chat.db_orm import orm_update_manager_load
 from goods.db_orm import orm_get_avito_product
 
 logger = logging.getLogger("celery_logger")
+
+
+def release_manager_lock(lock_key: str, lock_token: str) -> None:
+    release_lock_script = """
+    if redis.call("GET", KEYS[1]) == ARGV[1] then
+        return redis.call("DEL", KEYS[1])
+    else
+        return 0
+    end
+    """
+    redis_client_broker.eval(
+        release_lock_script,
+        1,
+        lock_key,
+        lock_token,
+    )
 
 
 def get_topic_and_prev_emails(
@@ -118,21 +135,23 @@ def create_emails_data(manager: int, messages: list[dict]) -> list[tuple[int, st
 @celery_client.task(
     bind=True,
     ignore_result=True,
-    max_retries=5,
-    default_retry_delay=10,
+    max_retries=8,
+    default_retry_delay=8,
     retry_jitter=True,
+    # acks_late=True,; не терять смски при worker kill. сделать pending-messages,processing-messages(lmove/blmove) в redis
     reject_on_worker_lost=True,
 )
 def send_message_to_manager(self, manager: int, manager_email: str):
     s_manager = str(manager)
     lock_key = f"{manager}_lock"
+    lock_token = str(uuid.uuid4())
 
     if redis_client_broker.llen(s_manager) == 0:
         logger.info(f"Messages for {manager}  already send")
         return
-    elif not redis_client_broker.set(lock_key, 1, nx=True, ex=60):
+    elif not redis_client_broker.set(lock_key, lock_token, nx=True, ex=60):
         logger.info(f"Manager {manager} is locked, retrying later")
-        raise self.retry(countdown=8)
+        raise self.retry()
 
     try:
         messages = choose_messages(s_manager)
@@ -141,4 +160,4 @@ def send_message_to_manager(self, manager: int, manager_email: str):
     except Exception as e:
         logger.error(repr(e), exc_info=True)
     finally:
-        redis_client_broker.delete(lock_key)
+        release_manager_lock(lock_key, lock_token)

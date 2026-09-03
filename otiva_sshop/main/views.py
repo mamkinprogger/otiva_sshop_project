@@ -1,6 +1,7 @@
-from django.http import HttpResponse
+from django.shortcuts import render
 
 
 async def index(request):
-    return HttpResponse("Хаюшки")
+    # context = {}
+    return render(request, 'main/index.html')
 

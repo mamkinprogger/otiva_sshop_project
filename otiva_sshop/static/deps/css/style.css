@@ -1,0 +1,616 @@
+/* =========================
+   Базовые настройки
+========================= */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f7f8fc;
+    color: #171923;
+    line-height: 1.6;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+button {
+    font-family: inherit;
+}
+
+.container {
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto;
+}
+
+
+/* =========================
+   Header
+========================= */
+
+.header {
+    height: 72px;
+    background: #ffffff;
+    border-bottom: 1px solid #e8eaf0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-inner {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-link {
+    padding: 9px 16px;
+    border-radius: 8px;
+    color: #606575;
+    font-size: 15px;
+    font-weight: 500;
+    transition: 0.2s ease;
+}
+
+.nav-link:hover {
+    background: #f1f2f6;
+    color: #171923;
+}
+
+.nav-link.active {
+    background: #171923;
+    color: #ffffff;
+}
+
+
+/* =========================
+   Mobile menu
+========================= */
+
+.menu-button {
+    display: none;
+    width: 42px;
+    height: 42px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 8px;
+}
+
+.menu-button span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: #171923;
+    margin: 5px 0;
+    transition: 0.2s ease;
+}
+
+
+/* =========================
+   Hero
+========================= */
+
+.hero {
+    padding: 100px 0;
+    background: #ffffff;
+}
+
+.hero-content {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr;
+    gap: 80px;
+    align-items: center;
+}
+
+.hero-label,
+.section-label {
+    display: inline-block;
+    margin-bottom: 14px;
+    color: #6366f1;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.hero h1 {
+    font-size: clamp(42px, 6vw, 72px);
+    line-height: 1.05;
+    letter-spacing: -3px;
+    margin-bottom: 24px;
+}
+
+.hero-description {
+    max-width: 620px;
+    color: #656a78;
+    font-size: 18px;
+    line-height: 1.7;
+    margin-bottom: 34px;
+}
+
+.hero-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+
+/* =========================
+   Buttons
+========================= */
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 22px;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 600;
+    transition: 0.2s ease;
+}
+
+.button-primary {
+    background: #171923;
+    color: #ffffff;
+}
+
+.button-primary:hover {
+    background: #2b2e3a;
+    transform: translateY(-1px);
+}
+
+.button-secondary {
+    background: #f0f1f5;
+    color: #171923;
+}
+
+.button-secondary:hover {
+    background: #e5e7ed;
+}
+
+
+/* =========================
+   Hero card
+========================= */
+
+.hero-card {
+    padding: 40px;
+    border-radius: 20px;
+    background: #171923;
+    color: #ffffff;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
+}
+
+.hero-card-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    border-radius: 14px;
+    font-size: 27px;
+    margin-bottom: 28px;
+}
+
+.hero-card h2 {
+    font-size: 28px;
+    margin-bottom: 12px;
+}
+
+.hero-card p {
+    color: #b8bbc5;
+    line-height: 1.7;
+}
+
+
+/* =========================
+   Features
+========================= */
+
+.features {
+    padding: 100px 0;
+}
+
+.section-heading {
+    max-width: 650px;
+    margin-bottom: 45px;
+}
+
+.section-heading h2 {
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+}
+
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.feature-card {
+    padding: 32px;
+    background: #ffffff;
+    border: 1px solid #e8eaf0;
+    border-radius: 16px;
+    transition: 0.25s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.07);
+}
+
+.feature-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f2f6;
+    border-radius: 12px;
+    font-size: 22px;
+    margin-bottom: 24px;
+}
+
+.feature-card h3 {
+    font-size: 21px;
+    margin-bottom: 10px;
+}
+
+.feature-card p {
+    color: #6b7080;
+    margin-bottom: 24px;
+}
+
+.feature-link {
+    color: #4f46e5;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.feature-link:hover {
+    text-decoration: underline;
+}
+
+
+/* =========================
+   Footer
+========================= */
+
+.footer {
+    background: #171923;
+    color: #ffffff;
+    padding: 28px 0;
+}
+
+.footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.footer p {
+    color: #aeb1bb;
+    font-size: 14px;
+}
+
+.footer-links {
+    display: flex;
+    gap: 20px;
+    color: #c7c9d1;
+    font-size: 14px;
+}
+
+.footer-links a:hover {
+    color: #ffffff;
+}
+
+
+
+/* =========================
+   Адаптивность
+========================= */
+
+@media (max-width: 800px) {
+
+    .hero {
+        padding: 70px 0;
+    }
+
+    .hero-content {
+        grid-template-columns: 1fr;
+        gap: 50px;
+    }
+
+    .features {
+        padding: 70px 0;
+    }
+
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .menu-button {
+        display: block;
+    }
+
+    .nav {
+        position: absolute;
+        top: 72px;
+        left: 0;
+        right: 0;
+
+        display: none;
+        flex-direction: column;
+        align-items: stretch;
+
+        padding: 12px 20px 20px;
+
+        background: #ffffff;
+        border-bottom: 1px solid #e8eaf0;
+    }
+
+    .nav.open {
+        display: flex;
+    }
+
+    .nav-link {
+        padding: 13px 16px;
+    }
+}
+
+
+@media (max-width: 500px) {
+
+    .container {
+        width: min(100% - 28px, 1120px);
+    }
+
+    .hero h1 {
+        letter-spacing: -2px;
+    }
+
+    .hero-description {
+        font-size: 16px;
+    }
+
+    .hero-card {
+        padding: 28px;
+    }
+
+    .button {
+        width: 100%;
+    }
+
+    .footer-inner {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+
+/* =========================
+   Dropdown "Информация"
+========================= */
+
+.nav-dropdown {
+    position: relative;
+}
+
+.dropdown-button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.dropdown-arrow {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 14px;
+    transition: transform 0.2s ease;
+}
+
+
+/* Выпадающее меню */
+
+.dropdown-menu {
+    position: absolute;
+
+    top: calc(100% + 8px);
+    right: 0;
+
+    min-width: 220px;
+
+    padding: 8px;
+
+    background: #ffffff;
+    border: 1px solid #e8eaf0;
+    border-radius: 10px;
+
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+
+    /* Скрываем меню */
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-5px);
+
+    transition:
+        opacity 0.2s ease,
+        visibility 0.2s ease,
+        transform 0.2s ease;
+
+    z-index: 200;
+}
+
+
+/* Показываем меню при наведении */
+
+.nav-dropdown:hover .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+
+/* Поворачиваем стрелку */
+
+.nav-dropdown:hover .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+
+/* Элемент выпадающего меню */
+
+.dropdown-link {
+    display: block;
+
+    padding: 10px 12px;
+
+    border-radius: 7px;
+
+    color: #606575;
+
+    font-size: 14px;
+    font-weight: 500;
+
+    transition: 0.2s ease;
+}
+
+.dropdown-link:hover {
+    background: #f1f2f6;
+    color: #171923;
+}
+
+
+/* Активная страница внутри dropdown */
+
+.dropdown-link.active {
+    background: #171923;
+    color: #ffffff;
+}
+
+
+/* =========================
+   Mobile dropdown
+========================= */
+
+@media (max-width: 800px) {
+
+    .nav-dropdown {
+        width: 100%;
+    }
+
+    .dropdown-button {
+        width: 100%;
+        text-align: left;
+    }
+
+    .dropdown-menu {
+        position: static;
+
+        width: 100%;
+
+        margin-top: 5px;
+
+        padding: 5px;
+
+        box-shadow: none;
+
+        border: none;
+        background: #f7f8fc;
+
+        display: none;
+
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+    }
+
+    .nav-dropdown.open .dropdown-menu {
+        display: block;
+    }
+
+    .nav-dropdown.open .dropdown-arrow {
+        transform: rotate(180deg);
+    }
+}
+
+
+
+/* =========================
+   Внутренние страницы
+========================= */
+
+.page-section {
+    min-height: calc(100vh - 72px - 80px);
+    padding: 80px 0;
+}
+
+.page-section .section-heading {
+    margin-bottom: 35px;
+}
+
+.page-section h1 {
+    font-size: clamp(40px, 6vw, 64px);
+    line-height: 1.1;
+    letter-spacing: -2px;
+}
+
+
+.content-card {
+    max-width: 750px;
+
+    padding: 35px;
+
+    background: #ffffff;
+
+    border: 1px solid #e8eaf0;
+    border-radius: 16px;
+}
+
+.content-card h2 {
+    margin-bottom: 15px;
+}
+
+.content-card p {
+    color: #656a78;
+    margin-bottom: 12px;
+}
+
+.content-card a {
+    color: #4f46e5;
+}
+
+
+
+

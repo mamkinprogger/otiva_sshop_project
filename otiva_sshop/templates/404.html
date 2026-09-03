@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}
+    Страница не найдена
+{% endblock %}
+
+
+{% block content %}
+<section class="page-section error-page">
+    <div class="container">
+        <div class="error-content">
+{#            <div class="error-code">404</div>#}
+            <h1>Страница не найдена</h1>
+            <p>Пока такой страницы не существует, но мы обязательно ее когда-нибудь сделаем.</p>
+
+            <div class="error-actions">
+                <a href="{% url 'main:index' %}" class="button button-primary">
+                    Вернуться на главную
+                </a>
+
+                <button class="button button-secondary" onclick="history.back()">
+                    Вернуться назад
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    Главная
+{% endblock %}
+
+
+{% block content %}
+<section class="hero">
+
+    <div class="container hero-content">
+
+        <div class="hero-text">
+            <h1>
+                Добро пожаловать
+            </h1>
+
+            <p class="hero-description">
+                Это главная страница Django-приложения.
+            </p>
+
+{#            <div class="hero-buttons">#}
+{##}
+{#                <a#}
+{#                    href="{% url 'account' %}"#}
+{#                    class="button button-primary"#}
+{#                >#}
+{#                    Перейти в аккаунт#}
+{#                </a>#}
+{##}
+{#                <a#}
+{#                    href="{% url 'about' %}"#}
+{#                    class="button button-secondary"#}
+{#                >#}
+{#                    Узнать больше#}
+{#                </a>#}
+{##}
+{#            </div>#}
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}
+

@@ -1,0 +1,109 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="{% static 'deps/css/style.css' %}">
+
+    <link rel="rabbit-icon" sizes="180x180" href="{%  static "deps/favicon/android-chrome-512x512.png" %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{%  static "deps/favicon/favicon-32x32.png" %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{%  static "deps/favicon/favicon-16x16.png" %}">
+    <link rel="manifest" href="{%  static "deps/favicon/site.webmanifest" %}">
+    <title>
+        {% block title %}
+        {% endblock %}
+    </title>
+</head>
+
+<body>
+    <header class="header">
+        <div class="container header-inner">
+            <!-- Логотип -->
+            <a href="{% url 'main:index' %}" class="logo">
+                Otiva-Shop
+            </a>
+
+            <!-- Навигация -->
+            <nav class="nav" id="nav">
+                <!-- Аккаунт -->
+                <a href="{% url 'main:index' %}" class="nav-link active">
+                    Аккаунт
+                </a>
+{#                <!-- Информация -->#}
+{#                <div class="nav-dropdown">#}
+{#    #}
+{#                    <button#}
+{#                        class="nav-link dropdown-button#}
+{#                        {% if request.resolver_match.url_name == 'about' or request.resolver_match.url_name == 'contact_info' %}active{% endif %}"#}
+{#                    >#}
+{#                        Информация#}
+{#                        <span class="dropdown-arrow">⌄</span>#}
+{#                    </button>#}
+
+
+                    <!-- Выпадающее меню -->
+{#                    <div class="dropdown-menu">#}
+{#    #}
+{#                        <a#}
+{#                            href="{% url 'about' %}"#}
+{#                            class="dropdown-link#}
+{#                            {% if request.resolver_match.url_name == 'about' %}active{% endif %}"#}
+{#                        >#}
+{#                            Про нас#}
+{#                        </a>#}
+{#    #}
+{#                        <a#}
+{#                            href="{% url 'contact_info' %}"#}
+{#                            class="dropdown-link#}
+{#                            {% if request.resolver_match.url_name == 'contact_info' %}active{% endif %}"#}
+{#                        >#}
+{#                            Контактная информация#}
+{#                        </a>#}
+{#                    </div>#}
+{#                </div>#}
+
+            </nav>
+            <!-- Кнопка мобильного меню -->
+            <button
+                class="menu-button"
+                id="menuButton"
+                aria-label="Открыть меню"
+            >
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
+
+    <!--Основное содержимое страницы-->
+    <main>
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <!--Footer-->
+    <footer class="footer">
+        <div class="container footer-inner">
+            <p>© 2026 Otiva-Shop</p>
+            <div class="footer-links">
+                <a href="{% url 'main:index' %}">Главная</a>
+{#                <a href="{% url 'about' %}">#}
+{#                    Про нас#}
+{#                </a>#}
+{##}
+{#                <a href="{% url 'contact_info' %}">#}
+{#                    Контакты#}
+{#                </a>#}
+            </div>
+        </div>
+    </footer>
+    <script src="{% static 'deps/js/main.js' %}"></script>
+    </body>
+</html>
+

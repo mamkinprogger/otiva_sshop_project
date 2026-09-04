@@ -4,10 +4,22 @@ from app.settings import DEBUG
 from main.models import Pages, MainBlocks, PageBlocks, MotivationBlocks
 
 
+class RootPageMixin:
+    @staticmethod
+    def root_page(title: str, *, page_main_block: bool = None, page_block: bool = None) -> str:
+        page_title = "Страница не найдена"
+        if page_main_block:
+            page_title = MainBlocks.objects.filter(title=title).values_list("page__title").first()
+        elif page_block:
+            page_title = PageBlocks.objects.filter(title=title).values_list("page__title").first()
+        return page_title
+
+
 class MotivationBlocksTabAdmin(admin.TabularInline):
     model = MotivationBlocks
     fields = ["sticker", "title", "text"]
     extra = 1
+
 
 @admin.register(Pages)
 class PagesAdmin(admin.ModelAdmin):
@@ -15,24 +27,37 @@ class PagesAdmin(admin.ModelAdmin):
 
     search_fields = ["title", "slug"]
     list_filter = ["title"]
-    readonly_fields = ["slug"]
-    if DEBUG:
-        readonly_fields = []
     ordering = ["title"]
 
-    inlines = [MotivationBlocksTabAdmin]
+    def get_readonly_fields(self, request, obj=None):
+        return [] if DEBUG else ["slug"]
+
+    def get_inline_instances(self, request, obj: Pages | None = None):
+        inline_instances = []
+        if obj and obj.slug == "":
+            inline_instances.append(MotivationBlocksTabAdmin(self.model, self.admin_site))
+        return inline_instances
+
 
 @admin.register(MainBlocks)
-class MainBlocksAdmin(admin.ModelAdmin):
-    list_display = ["title", "text"]
+class MainBlocksAdmin(RootPageMixin, admin.ModelAdmin):
+    list_display = ["title", "text", "root_page_title"]
     search_fields = ["title", "text", "page__title"]
     list_filter = ["title", "page__title"]
     ordering = ["page__title"]
 
+    @admin.display(description="Название вкладки")
+    def root_page_title(self, obj) -> str:
+        return super().root_page(obj.title, page_main_block=True)
+
 
 @admin.register(PageBlocks)
-class PageBlocksAdmin(admin.ModelAdmin):
-    list_display = ["title", "text"]
-    search_fields = ["page__title", "title", "text", "link_text", "link_url", ]
-    list_filter = ["page__title", "title", "link_text", "link_url",]
-    ordering = ["page__title"]
+class PageBlocksAdmin(RootPageMixin, admin.ModelAdmin):
+    list_display = ["title", "text", "display_order", "root_page_title"]
+    search_fields = ["page__title", "display_order", "title", "text", "link_text", "link_url"]
+    list_filter = ["page__title", "display_order", "title", "link_text", "link_url",]
+    ordering = ["page__title", "display_order"]
+
+    @admin.display(description="Название вкладки")
+    def root_page_title(self, obj) -> str:
+        return super().root_page(obj.title, page_block=True)

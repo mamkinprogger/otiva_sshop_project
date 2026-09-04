@@ -40,6 +40,7 @@ class PageBlocks(TimeStampMixin):
     text = models.TextField(blank=True, null=True, verbose_name="Текст блока")
     link_text = models.CharField(max_length=250, blank=True, verbose_name="Название гиперссылки")
     link_url = models.URLField(blank=True, verbose_name="Адрес на что ведет ссылка")
+    display_order = models.PositiveSmallIntegerField(default=0, db_comment="Наивысший приоритет = 0 ", verbose_name="Приоритет выведения блоков")
 
     page = models.ForeignKey(Pages, on_delete=models.CASCADE)
 

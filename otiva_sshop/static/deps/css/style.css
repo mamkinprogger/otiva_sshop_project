@@ -15,6 +15,7 @@ html {
 body {
     font-family: Arial, Helvetica, sans-serif;
     background: #f7f8fc;
+    /*background: #98b3bf;*/
     color: #171923;
     line-height: 1.6;
 }
@@ -548,7 +549,7 @@ button {
 
         border: none;
         background: #f7f8fc;
-
+        /*background: #98b3bf;*/
         display: none;
 
         opacity: 1;

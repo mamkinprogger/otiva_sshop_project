@@ -9,13 +9,12 @@
 
     <link rel="stylesheet" href="{% static 'deps/css/style.css' %}">
 
-    <link rel="rabbit-icon" sizes="180x180" href="{%  static "deps/favicon/android-chrome-512x512.png" %}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{%  static "deps/favicon/favicon-32x32.png" %}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{%  static "deps/favicon/favicon-16x16.png" %}">
+    <link rel="rabbit-icon" sizes="180x180" href="{%  static "deps/favicon/android-chrome-512x512.svg" %}">
+    <link rel="icon" type="image/svg" sizes="32x32" href="{%  static "deps/favicon/favicon-32x32.svg" %}">
+    <link rel="icon" type="image/svg" sizes="16x16" href="{%  static "deps/favicon/favicon-16x16.svg" %}">
     <link rel="manifest" href="{%  static "deps/favicon/site.webmanifest" %}">
     <title>
-        {% block title %}
-        {% endblock %}
+        {% block title %}{% endblock %}
     </title>
 </head>
 
@@ -30,32 +29,26 @@
             <!-- Навигация -->
             <nav class="nav" id="nav">
                 <!-- Аккаунт -->
-                <a href="{% url 'main:index' %}" class="nav-link active">
-                    Аккаунт
+                <a href="#" class="nav-link active">
+                    Войти
                 </a>
-{#                <!-- Информация -->#}
-{#                <div class="nav-dropdown">#}
-{#    #}
-{#                    <button#}
-{#                        class="nav-link dropdown-button#}
-{#                        {% if request.resolver_match.url_name == 'about' or request.resolver_match.url_name == 'contact_info' %}active{% endif %}"#}
-{#                    >#}
-{#                        Информация#}
-{#                        <span class="dropdown-arrow">⌄</span>#}
-{#                    </button>#}
+                <!-- Информация -->
+                <div class="nav-dropdown">
+                    <button class="nav-link dropdown-button active">
+                        Информация
+                        <span class="dropdown-arrow">⌄</span>
+                    </button>
 
 
                     <!-- Выпадающее меню -->
-{#                    <div class="dropdown-menu">#}
-{#    #}
-{#                        <a#}
-{#                            href="{% url 'about' %}"#}
-{#                            class="dropdown-link#}
+                    <div class="dropdown-menu">
+                        <a href="{% url 'main:index' %}"
+                            class="dropdown-link active"
 {#                            {% if request.resolver_match.url_name == 'about' %}active{% endif %}"#}
-{#                        >#}
-{#                            Про нас#}
-{#                        </a>#}
-{#    #}
+                        >
+                            Про нас
+                        </a>
+
 {#                        <a#}
 {#                            href="{% url 'contact_info' %}"#}
 {#                            class="dropdown-link#}
@@ -63,8 +56,8 @@
 {#                        >#}
 {#                            Контактная информация#}
 {#                        </a>#}
-{#                    </div>#}
-{#                </div>#}
+                    </div>
+                </div>
 
             </nav>
             <!-- Кнопка мобильного меню -->
@@ -93,13 +86,8 @@
             <p>© 2026 Otiva-Shop</p>
             <div class="footer-links">
                 <a href="{% url 'main:index' %}">Главная</a>
-{#                <a href="{% url 'about' %}">#}
-{#                    Про нас#}
-{#                </a>#}
-{##}
-{#                <a href="{% url 'contact_info' %}">#}
-{#                    Контакты#}
-{#                </a>#}
+                <a href="#">Про нас</a>
+                <a href="#">Контакты</a>
             </div>
         </div>
     </footer>

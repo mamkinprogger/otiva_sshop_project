@@ -19,10 +19,14 @@ class Pages(TimeStampMixin):
 
 class MainBlocks(TimeStampMixin):
     """Main block of page"""
-    title = models.CharField(max_length=250, blank=True, null=True, verbose_name="Подпись главного блока")
+    title = models.CharField(max_length=250, verbose_name="Подпись главного блока")
     text = models.TextField(blank=True, null=True, verbose_name="Текст главного блока")
 
-    page = models.ForeignKey(Pages, on_delete=models.CASCADE)
+    page = models.ForeignKey(
+        Pages,
+        on_delete=models.CASCADE,
+        related_name="main_blocks",
+    )
 
     class Meta:
         db_table = 'main_block'
@@ -36,13 +40,18 @@ class MainBlocks(TimeStampMixin):
 
 class PageBlocks(TimeStampMixin):
     """Blocks of Pages"""
-    title = models.CharField(max_length=250, blank=True, null=True, verbose_name="Подпись блока")
+    title = models.CharField(max_length=250, verbose_name="Подпись блока")
+    sticker = models.CharField(max_length=150, blank=True, null=True, verbose_name="Смайлик блока")
     text = models.TextField(blank=True, null=True, verbose_name="Текст блока")
     link_text = models.CharField(max_length=250, blank=True, verbose_name="Название гиперссылки")
     link_url = models.URLField(blank=True, verbose_name="Адрес на что ведет ссылка")
     display_order = models.PositiveSmallIntegerField(default=0, db_comment="Наивысший приоритет = 0 ", verbose_name="Приоритет выведения блоков")
 
-    page = models.ForeignKey(Pages, on_delete=models.CASCADE)
+    page = models.ForeignKey(
+        Pages,
+        on_delete=models.CASCADE,
+        related_name="blocks",
+    )
 
     class Meta:
         db_table = 'block'
@@ -58,10 +67,14 @@ class MotivationBlocks(TimeStampMixin):
     """Motivation block. Uniq tables for page main:index"""
 
     sticker = models.CharField(max_length=150, blank=True, null=True, verbose_name="Смайлик мотивационного блока")
-    title = models.CharField(max_length=250, blank=True, null=True, verbose_name="Подпись мотивационного блока")
+    title = models.CharField(max_length=250, verbose_name="Подпись мотивационного блока")
     text = models.TextField(blank=True, null=True, verbose_name="Текст мотивационного блока")
 
-    page = models.ForeignKey(Pages, on_delete=models.CASCADE)
+    page = models.ForeignKey(
+        Pages,
+        on_delete=models.CASCADE,
+        related_name="motivation_blocks",
+    )
 
     class Meta:
         db_table = 'motivation_block'

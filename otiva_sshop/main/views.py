@@ -1,11 +1,9 @@
 from django.shortcuts import render
 
+from main.db_orm import orm_get_main_index_content
+
 
 async def index(request):
-    context = {
-        "title": "Otiva - Главная",
-        "content_head": "Добро пожаловать",
-        "content": "Это главная страница."
-    }
-    return render(request, 'main/index.html', context=context)
+    page_data = await orm_get_main_index_content("")
+    return render(request, 'main/index.html', context=page_data)
 

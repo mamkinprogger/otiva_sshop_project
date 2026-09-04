@@ -41,23 +41,23 @@ class PagesAdmin(admin.ModelAdmin):
 
 @admin.register(MainBlocks)
 class MainBlocksAdmin(RootPageMixin, admin.ModelAdmin):
-    list_display = ["title", "text", "root_page_title"]
+    list_display = ["title", "root_page_title"]
     search_fields = ["title", "text", "page__title"]
     list_filter = ["title", "page__title"]
     ordering = ["page__title"]
 
     @admin.display(description="Название вкладки")
-    def root_page_title(self, obj) -> str:
+    def root_page_title(self, obj: MainBlocks) -> str:
         return super().root_page(obj.title, page_main_block=True)
 
 
 @admin.register(PageBlocks)
 class PageBlocksAdmin(RootPageMixin, admin.ModelAdmin):
-    list_display = ["title", "text", "display_order", "root_page_title"]
+    list_display = ["title", "display_order", "root_page_title"]
     search_fields = ["page__title", "display_order", "title", "text", "link_text", "link_url"]
     list_filter = ["page__title", "display_order", "title", "link_text", "link_url",]
     ordering = ["page__title", "display_order"]
 
     @admin.display(description="Название вкладки")
-    def root_page_title(self, obj) -> str:
+    def root_page_title(self, obj: PageBlocks) -> str:
         return super().root_page(obj.title, page_block=True)

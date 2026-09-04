@@ -5,7 +5,7 @@ from app.db.mixin import TimeStampMixin
 class Pages(TimeStampMixin):
     """Page main"""
     title = models.CharField(max_length=250, verbose_name="Название вкладки")
-    slug = models.SlugField(max_length=100, unique=True, blank=True, verbose_name="URL страницы")
+    slug = models.CharField(max_length=200, unique=True, blank=True, verbose_name="URL страницы")
 
     class Meta:
         db_table = 'page'
@@ -45,7 +45,7 @@ class PageBlocks(TimeStampMixin):
     text = models.TextField(blank=True, null=True, verbose_name="Текст блока")
     link_text = models.CharField(max_length=250, blank=True, verbose_name="Название гиперссылки")
     link_url = models.URLField(blank=True, verbose_name="Адрес на что ведет ссылка")
-    display_order = models.PositiveSmallIntegerField(default=0, db_comment="Наивысший приоритет = 0 ", verbose_name="Приоритет выведения блоков")
+    display_order = models.PositiveSmallIntegerField(default=0, verbose_name="Приоритет выведения блоков")
 
     page = models.ForeignKey(
         Pages,
@@ -57,7 +57,7 @@ class PageBlocks(TimeStampMixin):
         db_table = 'block'
         verbose_name = "Блок страницы"
         verbose_name_plural = "Блоки страниц"
-        ordering = ("id",)
+        ordering = ("display_order",)
 
     def __str__(self):
         return f"{self.page} — {self.title}"
@@ -66,8 +66,8 @@ class PageBlocks(TimeStampMixin):
 class MotivationBlocks(TimeStampMixin):
     """Motivation block. Uniq tables for page main:index"""
 
-    sticker = models.CharField(max_length=150, blank=True, null=True, verbose_name="Смайлик мотивационного блока")
     title = models.CharField(max_length=250, verbose_name="Подпись мотивационного блока")
+    sticker = models.CharField(max_length=150, blank=True, null=True, verbose_name="Смайлик мотивационного блока")
     text = models.TextField(blank=True, null=True, verbose_name="Текст мотивационного блока")
 
     page = models.ForeignKey(
@@ -84,3 +84,25 @@ class MotivationBlocks(TimeStampMixin):
 
     def __str__(self):
         return f"{self.page} — {self.title}"
+
+
+class RegularQuestions(TimeStampMixin):
+    """Regular Questions and there are answers for about page"""
+    question = models.CharField(max_length=250, verbose_name="Вопрос")
+    answer = models.TextField(blank=True, null=True, verbose_name="Ответ на вопрос")
+    display_order = models.PositiveSmallIntegerField(default=0, verbose_name="Приоритет выведения вопросов")
+
+    page = models.ForeignKey(
+        Pages,
+        on_delete=models.CASCADE,
+        related_name="regular_questions",
+    )
+
+    class Meta:
+        db_table = 'regular_question'
+        verbose_name = "Вопорс-Ответа"
+        verbose_name_plural = "Вопрос-Ответы"
+        ordering = ("display_order",)
+
+    def __str__(self):
+        return f"question - {self.display_order}"

@@ -613,5 +613,391 @@ button {
 }
 
 
+/* =========================================
+   About page
+========================================= */
+
+.about-page {
+    padding: 80px 0 100px;
+}
 
 
+/* =========================================
+   Главный блок
+========================================= */
+
+.about-main {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 60px;
+
+    padding: 55px;
+
+    background: #171923;
+    color: #ffffff;
+
+    border-radius: 20px;
+
+    margin-bottom: 25px;
+}
+
+.about-main-content {
+    max-width: 720px;
+}
+
+.about-main .section-label {
+    color: #a5a6ff;
+}
+
+.about-main h1 {
+    max-width: 700px;
+
+    font-size: clamp(42px, 6vw, 68px);
+    line-height: 1.05;
+
+    letter-spacing: -3px;
+
+    margin-bottom: 28px;
+}
+
+.about-main-description {
+    max-width: 650px;
+
+    color: #b9bbc5;
+
+    font-size: 17px;
+    line-height: 1.75;
+
+    margin-bottom: 15px;
+}
+
+
+/* Правая часть */
+
+/*.about-main-side {*/
+/*    display: flex;*/
+/*    flex-direction: column;*/
+/*    gap: 10px;*/
+
+/*    padding-left: 30px;*/
+
+/*    border-left: 1px solid #383a46;*/
+/*}*/
+
+.about-number {
+    font-size: 14px;
+    font-weight: 700;
+
+    color: #8b8df8;
+
+    letter-spacing: 1px;
+}
+
+/*.about-main-side p {*/
+/*    color: #b9bbc5;*/
+
+/*    font-size: 15px;*/
+/*    line-height: 1.7;*/
+/*}*/
+
+/* =========================================
+   Дополнительные блоки About
+========================================= */
+
+.about-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+
+/* =========================================
+   Карточка
+========================================= */
+
+.about-card {
+    width: 100%;
+
+    padding: 45px;
+
+    background: #ffffff;
+
+    border: 1px solid #e8eaf0;
+    border-radius: 18px;
+
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.about-card:hover {
+    transform: translateY(-2px);
+
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.06);
+}
+
+
+/* =========================================
+   Заголовок карточки
+========================================= */
+
+.about-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 30px;
+}
+
+.about-card-icon {
+    width: 54px;
+    height: 54px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #f1f2f6;
+
+    border-radius: 13px;
+
+    font-size: 23px;
+}
+
+.about-card-number {
+    color: #9a9dab;
+
+    font-size: 13px;
+    font-weight: 600;
+
+    letter-spacing: 1px;
+}
+
+
+.about-card h2 {
+    font-size: 32px;
+
+    letter-spacing: -0.8px;
+
+    margin-bottom: 15px;
+}
+
+.about-card > p {
+    max-width: 800px;
+
+    color: #656a78;
+
+    font-size: 17px;
+    line-height: 1.75;
+
+    margin-bottom: 30px;
+}
+
+
+/* =========================================
+   Список советов / идей
+========================================= */
+
+.about-list {
+    max-width: 850px;
+
+    list-style: none;
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 14px;
+}
+
+.about-list li {
+    position: relative;
+
+    padding: 15px 18px 15px 42px;
+
+    background: #f7f8fc;
+
+    border-radius: 10px;
+
+    color: #444754;
+
+    font-size: 15px;
+
+    transition: background 0.2s ease;
+}
+
+.about-list li:hover {
+    background: #f0f1f5;
+}
+
+.about-list li::before {
+    content: "→";
+
+    position: absolute;
+
+    left: 18px;
+    top: 15px;
+
+    color: #6366f1;
+
+    font-weight: 700;
+}
+
+
+/* =========================================
+   FAQ
+========================================= */
+
+.faq-list {
+    display: flex;
+    flex-direction: column;
+
+    gap: 12px;
+}
+
+.faq-item {
+    border: 1px solid #e8eaf0;
+
+    border-radius: 11px;
+
+    overflow: hidden;
+}
+
+.faq-item summary {
+    padding: 20px 22px;
+
+    cursor: pointer;
+
+    color: #272a35;
+
+    font-size: 16px;
+    font-weight: 600;
+
+    list-style: none;
+
+    transition: background 0.2s ease;
+}
+
+.faq-item summary::-webkit-details-marker {
+    display: none;
+}
+
+.faq-item summary::after {
+    content: "+";
+
+    float: right;
+
+    color: #777b89;
+
+    font-size: 20px;
+    font-weight: 400;
+}
+
+.faq-item[open] summary::after {
+    content: "−";
+}
+
+.faq-item summary:hover {
+    background: #f7f8fc;
+}
+
+.faq-item p {
+    max-width: 900px;
+
+    padding: 0 22px 22px;
+
+    color: #6b7080;
+
+    font-size: 15px;
+
+    line-height: 1.7;
+}
+
+
+/* =========================================
+   Mobile
+========================================= */
+
+@media (max-width: 800px) {
+
+    .about-card {
+        padding: 32px;
+    }
+
+    .about-card h2 {
+        font-size: 27px;
+    }
+
+    .about-card > p {
+        font-size: 16px;
+    }
+}
+
+
+@media (max-width: 500px) {
+
+    .about-card {
+        padding: 25px;
+        border-radius: 15px;
+    }
+
+    .about-card-header {
+        margin-bottom: 24px;
+    }
+
+    .about-card h2 {
+        font-size: 25px;
+    }
+
+    .about-list li {
+        padding: 13px 15px 13px 38px;
+    }
+
+    .about-list li::before {
+        left: 15px;
+        top: 13px;
+    }
+}
+
+
+/* =========================================
+   SVG в главном блоке About
+========================================= */
+
+.about-main-side {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 280px;
+}
+
+.about-illustration {
+    display: block;
+
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+
+    object-fit: contain;
+}
+
+
+/* =========================================
+   Mobile
+========================================= */
+
+@media (max-width: 800px) {
+
+    .about-main-side {
+        min-height: 220px;
+    }
+
+    .about-illustration {
+        max-width: 240px;
+    }
+}
+
+
+#about-main {
+    scroll-margin-top: 100px;
+}

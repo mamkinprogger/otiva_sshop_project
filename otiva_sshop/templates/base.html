@@ -22,10 +22,7 @@
     <header class="header">
         <div class="container header-inner">
             <!-- Логотип -->
-            <a href="{% url 'main:index' %}" class="logo">
-                Otiva-Shop
-            </a>
-
+            <a href="{% url 'main:index' %}" class="logo">Otiva-Shop</a>
             <!-- Навигация -->
             <nav class="nav" id="nav">
                 <!-- Аккаунт -->
@@ -38,17 +35,13 @@
                         Информация
                         <span class="dropdown-arrow">⌄</span>
                     </button>
-
-
                     <!-- Выпадающее меню -->
                     <div class="dropdown-menu">
-                        <a href="{% url 'main:index' %}"
-                            class="dropdown-link active"
-{#                            {% if request.resolver_match.url_name == 'about' %}active{% endif %}"#}
-                        >
+                        <a href="{% url 'main:about' %}#about-main"
+                            class="dropdown-link
+                            {% if not request.resolver_match.url_name == 'about' %}active{% endif %}">
                             Про нас
                         </a>
-
 {#                        <a#}
 {#                            href="{% url 'contact_info' %}"#}
 {#                            class="dropdown-link#}
@@ -58,7 +51,6 @@
 {#                        </a>#}
                     </div>
                 </div>
-
             </nav>
             <!-- Кнопка мобильного меню -->
             <button
@@ -86,7 +78,7 @@
             <p>© 2026 Otiva-Shop</p>
             <div class="footer-links">
                 <a href="{% url 'main:index' %}">Главная</a>
-                <a href="#">Про нас</a>
+                <a href="{% url 'main:about' %}#about-main">Про нас</a>
                 <a href="#">Контакты</a>
             </div>
         </div>

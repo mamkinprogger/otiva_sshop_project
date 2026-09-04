@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    {{ page.title }}
+{% endblock %}
+
+{% block content %}
+
+<section class="about-page">
+    <div class="container">
+        <div class="about-main" id="about-main">
+            <div class="about-main-content">
+                <p class="section-label">О нас</p>
+                <h2> {{ main_block.title }}</h2>
+                {% for text in main_block.text %}
+                <h4 class="about-main-description">{{ text }}</h4>
+                {% endfor %}
+            </div>
+
+
+            <div class="about-main-side">
+                <img src="{% static 'deps/favicon/noback/android-chrome-512x512.svg' %}"
+                     alt="Иллюстрация приложения"
+                     class="about-illustration">
+            </div>
+        </div>
+
+
+        <!-- =================================
+             Дополнительная информация
+        ================================== -->
+
+        <div class="about-grid">
+            {% for block in blocks %}
+                <article class="about-card">
+                    <div class="about-card-header">
+                        {% if block.sticker %}<span class="about-card-icon">{{ block.sticker }}</span>{% endif %}
+                    </div>
+                    <h2>{{ block.title }}</h2>
+                    {% if block.text %}<p>{{ block.text }}</p>{% endif %}
+                    {% if block.bullets %}
+                        <ul class="about-list">
+                            {% for bullet in block.bullets %}<li>{{ bullet }}</li>{% endfor %}
+                        </ul>
+                    {% endif %}
+                </article>
+            {% endfor %}
+
+
+            <!-- FAQ -->
+            <article class="about-card about-card-wide">
+                <div class="about-card-header">
+                    <span class="about-card-icon">?</span>
+                </div>
+                <h2>Частые вопросы</h2>
+                <div class="faq-list">
+                    {% if not questions %}
+                    <details class="faq-item">
+                        <summary>Для чего предназначено приложение?</summary>
+                        <p>Приложение предоставляет единое место для работы с информацией и основными функциями сервиса.</p>
+                    </details>
+                    {% else %}
+                    {% for qa in questions %}
+                        <details class="faq-item">
+                        <summary>{{ qa.question }}?</summary>
+                        <p>{{ qa.answer }}.</p>
+                        </details>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </article>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+

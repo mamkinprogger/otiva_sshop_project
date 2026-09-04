@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from app.settings import DEBUG
-from main.models import Pages, MainBlocks, PageBlocks, MotivationBlocks
+from main.models import Pages, MainBlocks, PageBlocks, MotivationBlocks, RegularQuestions
 
 
 class RootPageMixin:
@@ -20,6 +20,11 @@ class MotivationBlocksTabAdmin(admin.TabularInline):
     fields = ["sticker", "title", "text"]
     extra = 1
 
+class RegularQuestionsTabAdmin(admin.TabularInline):
+    model = RegularQuestions
+    fields = ["question", "answer", "display_order"]
+    extra = 1
+
 
 @admin.register(Pages)
 class PagesAdmin(admin.ModelAdmin):
@@ -34,8 +39,11 @@ class PagesAdmin(admin.ModelAdmin):
 
     def get_inline_instances(self, request, obj: Pages | None = None):
         inline_instances = []
-        if obj and obj.slug == "":
-            inline_instances.append(MotivationBlocksTabAdmin(self.model, self.admin_site))
+        if obj:
+            if obj.slug.strip() == "":
+                inline_instances.append(MotivationBlocksTabAdmin(self.model, self.admin_site))
+            if obj.slug.strip("/") == "about":
+                inline_instances.append(RegularQuestionsTabAdmin(self.model, self.admin_site))
         return inline_instances
 
 

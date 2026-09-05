@@ -21,3 +21,7 @@ async def about(request):
     for qa in page_data["questions"]:
         qa.question = qa.question.rstrip("?")
     return render(request, 'main/about.html', context=page_data)
+
+
+async def contacts(request):
+    return render(request, 'main/contacts.html')

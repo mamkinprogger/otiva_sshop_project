@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    Otiva - Контакты
+{% endblock %}
+
+
+{% block content %}
+<section class="hero">
+
+    <div class="container hero-content">
+        <div class="hero-text">
+            <h1>С нами можно связаться</h1>
+            <p class="hero-description">Мы ждем тебя</p>
+            <div class="hero-buttons">
+                <a href="#" class="button button-primary">Позвонить</a>
+            </div>
+        </div>
+
+        <div class="hero-card">
+            <div class="hero-card-icon"> 🩶 </div>
+            <h2> +373-890-90-00 </h2>
+            <p>Основной номер для связи</p>
+        </div>
+
+    </div>
+</section>
+<!-- Возможности -->
+<section class="features">
+    <div class="container">
+        <div class="features-grid">
+            <article class="feature-card">
+            <div class="feature-icon"> 👤 </div>
+                <h3>+374 666-44-22</h3>
+                <p>Резервный номер телефона</p>
+                <a href="#" class="feature-link"> Позвонить → </a>
+            </article>
+            <article class="feature-card">
+            <div class="feature-icon"> 📧 </div>
+                <h3>mamail@gmail.com</h3>
+                <p>Почта для сотрудничества</p>
+                <a href="#" class="feature-link"> Написать → </a>
+            </article>
+            <article class="feature-card">
+            <div class="feature-icon"> 💬 </div>
+                <h3>@sobyachka</h3>
+                <p>Аккаунт в телеграм</p>
+                <a href="#" class="feature-link"> Написать → </a>
+
+            </article>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+

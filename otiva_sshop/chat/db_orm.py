@@ -31,15 +31,15 @@ def orm_update_manager_load(
         call: str | None,
         new_chat: bool,
         get_emails=True,
-) -> tuple[int, list[str]] | int:
+) -> tuple[bool, list[str]] | bool:
     """
     Updating manager load
 
     If a new client - add to db
 
-    If get_emails False return client_id
+    If get_emails False return bool[client_just_added]
 
-    return tuple[client_id, emails history of client]
+    return tuple[bool[client_just_added], emails history of client]
 
     """
     try:
@@ -69,9 +69,9 @@ def orm_update_manager_load(
 
     if get_emails:
         if just_added:
-            return client.client_id, []
+            return just_added, []
         else:
-            return client.client_id, [i.strip() for i in client.emails_history.split(":") if i.strip()]
+            return just_added, [i.strip() for i in client.emails_history.split(":") if i.strip()]
     else:
-        return client_id
+        return just_added
 

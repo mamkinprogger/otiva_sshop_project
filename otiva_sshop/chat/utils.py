@@ -1,6 +1,5 @@
 import logging
 import string
-
 import smtplib
 import ssl
 
@@ -115,6 +114,23 @@ class MessageFromWebhook:
 
     def create_str(self):
         return '~'.join(f"{k}:{v}" for k, v in self.create().items())
+
+    @staticmethod
+    def unpack_str_msg(str_msg: str):
+        """Unpack msg wich convert to str self.create_str"""
+        message = dict()
+
+        for field in str_msg.split("~"):
+            key, separator, value = field.partition(":")
+            if separator:
+                if key in ["client_id", "item_id", "sending_time"]:
+                    message[key] = int(value) if value not in ("", "None") else None
+                else:
+                    message[key] = value if value not in ("", "None") else None
+            else:
+                text_value = message.get("text", "")
+                message["text"] = text_value + field
+        return message
 
     def __str__(self):
         return f"{self.chat_id}:{self.sending_time}"
@@ -239,8 +255,16 @@ class ShopEmail:
             raise CreateMailException("email is not a str")
 
         email_data = email.split("@")
-        if len(email_data) != 2 or len(email_data[1].rsplit(".", 1)) != 2:
+        if len(email_data) != 2:
             return False
+        else:
+            postbox_domain = email_data[1].rsplit(".", 1)
+            if not all([
+                len(postbox_domain) == 2,
+                bool(postbox_domain[-1].strip()),
+                postbox_domain[-1].strip().isalpha()
+            ]):
+                return False
 
         email_name, email_domain = email_data
         if not email_name or email_name[0] in string.digits:
@@ -287,7 +311,7 @@ class ShopEmail:
     def send_email_from_yandex(
             self,
             emails: list[MIMEMultipart],
-    ) -> list[tuple[str, bool]]:
+    ) -> list[tuple[str, bool, Exception | None]]:
         """
         Send an email with an SMTP server. Establishes connection immediately over ssl
         :return: list[tuple[str[mail_id], bool[success]]]
@@ -301,13 +325,11 @@ class ShopEmail:
             try:
                 with SMTPEmailSender(self.from_email, self.password, smtp_server, port, timeout) as sender:
                         sender.send(email)
-                        results.append((email["Message-ID"], True))
+                        results.append((email["Message-ID"], True, None))
             except smtplib.SMTPException as smtp_err:
                 logger.error(f'Ошибка с SMTP {smtp_err}')
-                results.append((email["Message-ID"], False))
-                raise smtp_err
+                results.append((email["Message-ID"], False, smtp_err))
             except Exception as err:
                 logger.error(f"Непредвиденная ошибка {err}", exc_info=True)
-                results.append((email["Message-ID"], False))
-                raise err
+                results.append((email["Message-ID"], False, err))
         return results

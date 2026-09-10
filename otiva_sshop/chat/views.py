@@ -87,7 +87,7 @@ async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]
         received_time = str(msg.sending_time).encode()
         new_chat = True if not client or not client["manager_id"] else False
 
-    msg_to_queue = f"{msg.chat_id=};{new_chat=};{msg.create_str()}"
+    msg_to_queue = f"{new_chat=};{msg.create_str()}"
     await redis_aclient_broker.lpush(target_manager, msg_to_queue)
 
     send_message_to_manager.delay(int(target_manager), manager_email.decode())

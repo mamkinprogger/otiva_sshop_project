@@ -5,27 +5,27 @@ import pytest
 from chat.utils import MessageFromWebhook
 from chat.views import assign_manager, manager_response_lag, identify_manager
 import chat.views as views
-from conftest import test_redis_client
+from conftest import test_redis
 
 
 @pytest.fixture
-async def pd_redis_client(monkeypatch, test_redis_client):
+async def pd_redis(monkeypatch, test_redis):
     monkeypatch.setattr(
         views,
-        "redis_client",
-        test_redis_client
+        "redis",
+        test_redis
     )
-    return test_redis_client
+    return test_redis
 
 
 @pytest.fixture
-def pd_redis_aclient_broker(monkeypatch, test_redis_aclient_broker):
+def pd_aredis_broker(monkeypatch, test_aredis_broker):
     monkeypatch.setattr(
         views,
-        "redis_aclient_broker",
-        test_redis_aclient_broker,
+        "aredis_broker",
+        test_aredis_broker,
     )
-    return test_redis_aclient_broker
+    return test_aredis_broker
 
 
 class TestAssignManager:
@@ -33,7 +33,7 @@ class TestAssignManager:
         redis_mock = AsyncMock()
         redis_mock.hget.return_value = b"email21111@mail.ru"
         monkeypatch.setattr(
-            views, "redis_client", redis_mock
+            views, "redis", redis_mock
         )
 
         result = await assign_manager(
@@ -52,7 +52,7 @@ class TestAssignManager:
         redis_mock = AsyncMock()
         redis_mock.hget.return_value = b"email21111@mail.ru"
         monkeypatch.setattr(
-            views, "redis_client", redis_mock
+            views, "redis", redis_mock
         )
 
         result_1 = await assign_manager(
@@ -79,47 +79,47 @@ class TestAssignManager:
         redis_mock = AsyncMock()
         redis_mock.hget.return_value = b"email21111@mail.ru"
         monkeypatch.setattr(
-            views, "redis_client", redis_mock
+            views, "redis", redis_mock
         )
         with pytest.raises(RuntimeError, match=trace):
             await assign_manager(manager_id=manger_id, manager_email=manager_email)
 
 
 class TestManagerResponseLag:
-    async def test_manager_response_lag(self, pd_redis_client, correct_message_factory):
+    async def test_manager_response_lag(self, pd_redis, correct_message_factory):
         manager = 11111
         msg = MessageFromWebhook(correct_message_factory())
         msg.sending_time = 1_000_120
         expected_ttl = 60 * 60 * 24 * 3
-        await pd_redis_client.set(msg.chat_id, f"{manager}:1000000", ex=expected_ttl)
+        await pd_redis.set(msg.chat_id, f"{manager}:1000000", ex=expected_ttl)
 
         await manager_response_lag(msg)
 
-        assert (await pd_redis_client.get(
+        assert (await pd_redis.get(
             msg.chat_id
         )).decode() == f"{manager}:0"
-        assert int(await pd_redis_client.ttl(
+        assert int(await pd_redis.ttl(
             msg.chat_id
         )) in range(expected_ttl - 5, expected_ttl + 5)
-        assert await pd_redis_client.lrange(
+        assert await pd_redis.lrange(
             f"{manager}:response_lag", 0, -1
         ) == [b"2"]
 
-    async def test_manager_response_lag_client_doesnt_waiting(self, pd_redis_client, correct_message_factory):
+    async def test_manager_response_lag_client_doesnt_waiting(self, pd_redis, correct_message_factory):
         manager = 11111
         msg = MessageFromWebhook(correct_message_factory())
         expected_ttl = 60 * 60 * 24 * 3
-        await pd_redis_client.set(msg.chat_id, f"{manager}:0", ex=expected_ttl)
+        await pd_redis.set(msg.chat_id, f"{manager}:0", ex=expected_ttl)
 
         await manager_response_lag(msg)
 
-        assert int(await pd_redis_client.ttl(msg.chat_id)) in range(expected_ttl - 5, expected_ttl + 5)
-        assert not await pd_redis_client.lrange(f"{manager}:response_lag", 0, -1)
+        assert int(await pd_redis.ttl(msg.chat_id)) in range(expected_ttl - 5, expected_ttl + 5)
+        assert not await pd_redis.lrange(f"{manager}:response_lag", 0, -1)
 
     async def test_manager_response_lag_no_cached_chat(self, monkeypatch, correct_message_factory):
         redis_mock = AsyncMock()
         redis_mock.get.return_value = None
-        monkeypatch.setattr(views, "redis_client", redis_mock)
+        monkeypatch.setattr(views, "redis", redis_mock)
 
         msg = MessageFromWebhook(correct_message_factory())
         await manager_response_lag(msg)
@@ -135,7 +135,7 @@ class TestManagerResponseLag:
     ], ids=["negative timedelta", "timedelta less then 1 min", "1 min lag"], )
     async def test_manager_response_lag_timethinghs(
             self,
-            pd_redis_client,
+            pd_redis,
             correct_message_factory,
             sending_time,
             expect
@@ -143,11 +143,11 @@ class TestManagerResponseLag:
         manager = 11111
         msg = MessageFromWebhook(correct_message_factory())
         expected_ttl = 60 * 60 * 24 * 3
-        await pd_redis_client.set(msg.chat_id, f"{manager}:1000000", ex=expected_ttl)
+        await pd_redis.set(msg.chat_id, f"{manager}:1000000", ex=expected_ttl)
 
         msg.sending_time = sending_time
         await manager_response_lag(msg)
-        assert await pd_redis_client.lrange(
+        assert await pd_redis.lrange(
             f"{manager}:response_lag", 0, -1
         ) == expect
 
@@ -173,118 +173,118 @@ class TestIdentifyManager:
     async def test_identify_manager_new_client(
             self,
             monkeypatch,
-            pd_redis_client,
-            pd_redis_aclient_broker,
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, None)
 
         msg = MessageFromWebhook(correct_message_factory())
-        managers = await pd_redis_client.hgetall("managers")
+        managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"1"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
-        assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
+        assert await pd_redis.hget("managers", 11111) == b"1"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
+        assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
 
     async def test_client_in_creating_process(
             self,
             monkeypatch,
-            pd_redis_client,
-            pd_redis_aclient_broker,
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, None)
 
         msg = MessageFromWebhook(correct_message_factory())
-        managers = await pd_redis_client.hgetall("managers")
-        await pd_redis_client.set(msg.chat_id, f"21111:{msg.sending_time - 20}")
+        managers = await pd_redis.hgetall("managers")
+        await pd_redis.set(msg.chat_id, f"21111:{msg.sending_time - 20}")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"0"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
-        assert await pd_redis_client.get(msg.chat_id) == f"21111:{msg.sending_time - 20}".encode()
+        assert await pd_redis.hget("managers", 11111) == b"0"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert (await pd_aredis_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time - 20}".encode()
 
     async def test_cached_chat(
             self,
             monkeypatch,
-            pd_redis_client,
-            pd_redis_aclient_broker,
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": 11111, "manager_email": "a@a.ru"})
 
         msg = MessageFromWebhook(correct_message_factory())
-        await pd_redis_client.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
-        managers = await pd_redis_client.hgetall("managers")
+        await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
+        managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"0"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        assert await pd_redis.hget("managers", 11111) == b"0"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
+        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_cached_chat_new_question_from_client(
             self,
             monkeypatch,
-            pd_redis_client,
-            pd_redis_aclient_broker,
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": 11111, "manager_email": "a@a.ru"})
 
         msg = MessageFromWebhook(correct_message_factory())
-        await pd_redis_client.set(msg.chat_id, f"11111:0")
-        managers = await pd_redis_client.hgetall("managers")
+        await pd_redis.set(msg.chat_id, f"11111:0")
+        managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"0"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        assert await pd_redis.hget("managers", 11111) == b"0"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
+        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_cached_chat_expired(
             self,
             monkeypatch,
-            pd_redis_client,
-            pd_redis_aclient_broker,
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": 21111, "manager_email": "a@a.ru"})
 
         msg = MessageFromWebhook(correct_message_factory())
-        managers = await pd_redis_client.hgetall("managers")
+        managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"0"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert await pd_redis_client.get(msg.chat_id) == f"21111:{msg.sending_time}".encode()
-        assert (await pd_redis_aclient_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        assert await pd_redis.hget("managers", 11111) == b"0"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time}".encode()
+        assert (await pd_aredis_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
-    async def test_clients_managers_conflict(self, monkeypatch, pd_redis_client, correct_message_factory):
+    async def test_clients_managers_conflict(self, monkeypatch, pd_redis, correct_message_factory):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": 21111, "manager_email": "a@a.ru"})
         redis_mock = AsyncMock()
         redis_mock.get.return_value = f"11111:1000000".encode()
         redis_broker_mock = AsyncMock()
-        monkeypatch.setattr(views, "redis_client", redis_mock)
-        monkeypatch.setattr(views, "redis_aclient_broker", redis_broker_mock)
+        monkeypatch.setattr(views, "redis", redis_mock)
+        monkeypatch.setattr(views, "aredis_broker", redis_broker_mock)
 
 
         msg = MessageFromWebhook(correct_message_factory())
-        managers = await pd_redis_client.hgetall("managers")
+        managers = await pd_redis.hgetall("managers")
 
         with pytest.raises(views.ClientMessageError, match=r"!="):
             await identify_manager(msg, managers)
@@ -295,43 +295,43 @@ class TestIdentifyManager:
     async def test_existing_client_open_a_chat(
             self, 
             monkeypatch, 
-            pd_redis_client, 
-            pd_redis_aclient_broker, 
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": None, "manager_email": None})
 
         msg = MessageFromWebhook(correct_message_factory())
-        managers = await pd_redis_client.hgetall("managers")
+        managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"1"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
-        assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
+        assert await pd_redis.hget("managers", 11111) == b"1"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
+        assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
 
     async def test_existing_client_chatting_while_his_manager_updated(
             self,
             monkeypatch, 
-            pd_redis_client,
-            pd_redis_aclient_broker, 
+            pd_redis,
+            pd_aredis_broker,
             correct_message_factory
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": None, "manager_email": None})
 
         msg = MessageFromWebhook(correct_message_factory())
-        managers = await pd_redis_client.hgetall("managers")
-        await pd_redis_client.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
+        managers = await pd_redis.hgetall("managers")
+        await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis_client.hget("managers", 11111) == b"0"
-        assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
-        assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
+        assert await pd_redis.hget("managers", 11111) == b"0"
+        assert await pd_redis.hget("managers", 21111) == b"0"
+        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
 
 
 class TestWebhook:
@@ -372,7 +372,7 @@ class TestWebhook:
             self,
             monkeypatch,
             async_client,
-            pd_redis_client,
+            pd_redis,
             correct_message_factory,
             sender
     ):
@@ -400,7 +400,7 @@ class TestWebhook:
             self,
             monkeypatch,
             async_client,
-            pd_redis_client,
+            pd_redis,
             correct_message_factory,
     ):
         message_lag_mock = AsyncMock()

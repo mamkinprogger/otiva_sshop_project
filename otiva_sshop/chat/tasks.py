@@ -2,8 +2,8 @@ import logging
 import smtplib
 import uuid
 
-from app.misc.celery import celery_client
-from app.misc.redis_misc import redis_client_broker
+from app.misc.celery import celery
+from app.misc.redis_misc import redis_broker
 
 from chat.utils import MessageFromWebhook
 from chat.notifications.email_sending import send_notifications_on_email, create_msgsdata_for_email
@@ -12,6 +12,13 @@ logger = logging.getLogger("celery_logger")
 
 
 def release_manager_lock(lock_key: str, lock_token: str) -> None:
+    """
+    Delete lock_key if lock_key value is lock_token
+
+    :param lock_key:
+    :param lock_token:
+    :return:
+    """
     release_lock_script = """
     if redis.call("GET", KEYS[1]) == ARGV[1] then
         return redis.call("DEL", KEYS[1])
@@ -19,7 +26,7 @@ def release_manager_lock(lock_key: str, lock_token: str) -> None:
         return 0
     end
     """
-    redis_client_broker.eval(
+    redis_broker.eval(
         release_lock_script,
         1,
         lock_key,
@@ -38,18 +45,18 @@ def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
     viewed = dict()
     msgs = []
 
-    msg_entity = redis_client_broker.rpop(msgs_key)
+    msg_entity = redis_broker.rpop(msgs_key)
     while msg_entity:
         new_chat, _, msg_data = msg_entity.decode().partition(";")
         message = MessageFromWebhook().unpack_str_msg(msg_data)
         count = viewed.get(message["chat_id"], 0)
-        if count+1 > max_emails and not message["read"]:
+        if count+1 > max_emails or message["read"]:
             pass
         else:
             message["new_chat"] = new_chat == "new_chat=True" if count == 0 else False
             msgs.append(message)
             viewed[message["chat_id"]] = count + 1
-        msg_entity = redis_client_broker.rpop(msgs_key)
+        msg_entity = redis_broker.rpop(msgs_key)
 
     return msgs
 
@@ -85,7 +92,7 @@ def send_manager(manager_id: int, manager_email: str, manager_key: str):
     return retries
 
 
-@celery_client.task(
+@celery.task(
     bind=True,
     ignore_result=True,
     max_retries=8,
@@ -99,17 +106,17 @@ def send_notification_task(self, manager: int, manager_email: str):
     lock_key = f"{manager}_lock"
     lock_token = str(uuid.uuid4())
 
-    if redis_client_broker.llen(s_manager) == 0:
+    if redis_broker.llen(s_manager) == 0:
         logger.info(f"Messages for {manager}  already send")
         return
-    elif not redis_client_broker.set(lock_key, lock_token, nx=True, ex=60):
+    elif not redis_broker.set(lock_key, lock_token, nx=True, ex=60):
         logger.info(f"Manager {manager} is locked, retrying later")
         raise self.retry()
 
     try:
         fails = send_manager(manager, manager_email, s_manager)
         if fails:
-            redis_client_broker.lpush(f"{s_manager}:retry", *fails)
+            redis_broker.lpush(f"{s_manager}:retry", *fails)
             notification_retry_task.apply_async((manager, manager_email), countdown=5)
     except Exception as e:
         logger.error(repr(e), exc_info=True)
@@ -117,7 +124,7 @@ def send_notification_task(self, manager: int, manager_email: str):
         release_manager_lock(lock_key, lock_token)
 
 
-@celery_client.task(
+@celery.task(
     bind=True,
     max_retries=3,
     default_retry_delay=8,
@@ -130,10 +137,10 @@ def notification_retry_task(self, manager: int, manager_email: str):
     lock_key = f"{manager_key}_lock"
     lock_token = str(uuid.uuid4())
 
-    if redis_client_broker.llen(manager_key) == 0:
+    if redis_broker.llen(manager_key) == 0:
         logger.info(f"Retries for {manager_key} already done")
         return
-    elif not redis_client_broker.set(lock_key, lock_token, nx=True, ex=60):
+    elif not redis_broker.set(lock_key, lock_token, nx=True, ex=60):
         logger.info(f"Manager {manager_key} is locked, retrying later")
         raise self.retry()
 
@@ -143,7 +150,7 @@ def notification_retry_task(self, manager: int, manager_email: str):
             if self.request.retries == self.max_retries - 1:
                 pass
             else:
-                redis_client_broker.lpush(manager_key, *fails)
+                redis_broker.lpush(manager_key, *fails)
                 self.retry()
     except Exception as e:
         logger.error(f"Retry_MsgTask {repr(e)}", exc_info=True)

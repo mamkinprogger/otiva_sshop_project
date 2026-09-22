@@ -135,8 +135,8 @@ class TestSendManager:
         manager_key = str(manager_id)
         msg = {
             "client_id": 334,
-            "topic": "AvotTAK",
-            "prev_emails": []
+            "topic": "AvotTAK:Аноним",
+            "prev_email": None
         }
 
         create_msgsdata_mock = mocker.patch(
@@ -154,7 +154,7 @@ class TestSendManager:
         create_msgsdata_mock.assert_called_once()
         send_notifications_mock.assert_called_once_with(
             "asd@.ru",
-            emails_data=[(334, "AvotTAK", [])],
+            emails_data=[(334, "AvotTAK:Аноним", None)],
             alias_keys=[0],
             view_result=True
         )
@@ -164,8 +164,8 @@ class TestSendManager:
         manager_key = str(manager_id)
         msgs = [{
             "client_id": 334 + i,
-            "topic": "AvotTAK",
-            "prev_emails": []
+            "topic": "AvotTAK:Аноним",
+            "prev_email": None
         } for i in range(3)]
 
         mocker.patch(
@@ -186,8 +186,8 @@ class TestSendManager:
         manager_key = str(manager_id)
         msgs = [{
             "client_id": 333,
-            "topic": "AvotTAK",
-            "prev_emails": []
+            "topic": "AvotTAK:Аноним",
+            "prev_email": None
         }]
 
         mocker.patch(
@@ -209,8 +209,8 @@ class TestSendManager:
 
         msgs = [{
             "client_id": 333,
-            "topic": "AvotTAK",
-            "prev_emails": [],
+            "topic": "AvotTAK:Аноним",
+            "prev_email": None,
             "new_chat": True,
         }]
 
@@ -244,8 +244,8 @@ class TestSendManager:
 
         msgs = [{
             "client_id": 333 + i,
-            "topic": "AvotTAK",
-            "prev_emails": [],
+            "topic": "AvotTAK:аноним",
+            "prev_email": None,
             "new_chat": True,
         } for i in range(2)]
 

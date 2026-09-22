@@ -275,7 +275,7 @@ class ShopEmail:
 
         return True
 
-    def create_mail(self, prev_mails: list[str] = None,) -> MIMEMultipart:
+    def create_mail(self, prev_mails: list[str] = None) -> MIMEMultipart:
         """Create email with MIME"""
         if not isinstance(self.subject, str):
             raise CreateMailException("subject is not a str")

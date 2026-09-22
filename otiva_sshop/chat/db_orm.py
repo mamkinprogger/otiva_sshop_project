@@ -4,8 +4,8 @@ from chat.models import ClientsChatAvito
 from users.models import Clients, ClientPermissionError
 
 
-def orm_update_client_emails_history(client_id: int, emails_history: list[str]) -> None:
-    Clients.objects.filter(client_id=client_id).update(emails_history=':'.join(emails_history))
+def orm_update_client_emails_history(client_id: int, prev_email: str) -> None:
+    Clients.objects.filter(client_id=client_id).update(previous_email=prev_email)
 
 
 async def orm_contact_info_manager_from_client(client_id: int) -> dict | None:
@@ -31,15 +31,15 @@ def orm_update_manager_load(
         call: str | None,
         new_chat: bool,
         get_emails=True,
-) -> tuple[bool, list[str]] | bool:
+) -> tuple[bool, str | None, str] | tuple[bool, str]:
     """
     Updating manager load
 
     If a new client - add to db
 
-    If get_emails False return bool[client_just_added]
+    If get_emails False return bool[client_just_added, clients_name]
 
-    return tuple[bool[client_just_added], emails history of client]
+    return tuple[bool[client_just_added], prev_msg of client, client_name]
 
     """
     try:
@@ -50,7 +50,10 @@ def orm_update_manager_load(
             pinned_manager_id=manager_id,
         )
         ClientsChatAvito.objects.get_or_create(chat_id=chat_id, client_member_id=client_id)
+
+        client_name = client.name.strip() if client.name else "Аноним"
         manager_data = client.pinned_manager
+
     except IntegrityError as e:
         if e.args[0].split("\"")[-2].split("=")[0] == "(chat_id)":
             raise ClientPermissionError(f"Клиент {client_id} пытается получить доступ к чату который ему не принадлежит") from None
@@ -67,11 +70,14 @@ def orm_update_manager_load(
             manager_data.missed_calls_total += 1
     manager_data.save()
 
+
     if get_emails:
         if just_added:
-            return just_added, []
+            return just_added, None, client_name
         else:
-            return just_added, [i.strip() for i in client.emails_history.split(":") if i.strip()]
+            email = client.previous_email.strip()
+            prev_email = email if email else None
+            return just_added, prev_email, client_name
     else:
-        return just_added
+        return just_added, client_name
 

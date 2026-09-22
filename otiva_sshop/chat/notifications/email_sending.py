@@ -29,8 +29,8 @@ class EmailNotification:
             manager_email: str = None,
             *,
             emails_data: list[
-                tuple[int, str, list[str]] |
-                list[int | str| list[str]]
+                tuple[int, str, str | None] |
+                list[int | str| str | None]
             ] = None,
             alias_keys: list[Any] = None,
     ):
@@ -40,9 +40,9 @@ class EmailNotification:
         if emails_data:
             self._create_emails_data(emails_data, alias_keys)
 
-    def _create_emails_data(self, emails_data: list[tuple[int, str, list[str]]], keys: list[Any] | None) -> None:
+    def _create_emails_data(self, emails_data: list[tuple[int, str, str]], keys: list[Any] | None) -> None:
         if not isinstance(emails_data, list):
-            raise EmailNotificationTypeError("Emails_data must be a list[tuple[client_id, topic, prev_emails]]")
+            raise EmailNotificationTypeError("Emails_data must be a list[tuple[client_id, topic, prev_email]")
         elif keys and not isinstance(keys, list):
             raise EmailNotificationTypeError("keys must be a list[Any]")
 
@@ -50,7 +50,7 @@ class EmailNotification:
             ind: {
                 "client_id": mail[0],
                 "topic": mail[1],
-                "prev_emails": mail[2],
+                "prev_email": mail[2],
                 "alias_key": keys[ind] if keys and ind < len(keys) else None
             }
             for ind, mail in enumerate(emails_data)
@@ -96,8 +96,8 @@ class EmailNotification:
         if not success:
             return
         else:
-            mail["prev_emails"].append(email_id)
-            orm_update_client_emails_history(mail["client_id"], mail["prev_emails"])
+            mail["prev_email"] = email_id
+            orm_update_client_emails_history(mail["client_id"], mail["prev_email"])
 
     def update_clients_emails(self, results: list[tuple[str, bool]]) -> None:
         """
@@ -134,14 +134,18 @@ class EmailNotification:
         if len(self.emails_data) == 1:
             key = list(self.emails_data)[0]
             msg = self.emails_data[key]
-            mail = ShopEmail(self.manager_email, msg["topic"], msg["topic"]).create_mail(msg["prev_emails"])
+            prev_emails = [msg["prev_email"]] if msg["prev_email"] else None
+            mail = ShopEmail(self.manager_email, msg["topic"], msg["topic"]).create_mail(prev_emails)
             self.emails_data[mail["Message-ID"]] = self.emails_data.pop(key)
             mails_list.append(mail)
         else:
             cxt = get_context('spawn') if sys.platform == 'win32' else get_context('fork')
             with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=cxt) as executor:
                 futures = [
-                    [ind, executor.submit(ShopEmail(self.manager_email, mail["topic"], mail["topic"]).create_mail, mail["prev_emails"])]
+                    [ind, executor.submit(
+                        ShopEmail(self.manager_email, mail["topic"], mail["topic"]).create_mail,
+                        [mail["prev_email"]] if mail["prev_email"] else None
+                    )]
                     for ind, mail in self.emails_data.items()
                 ]
             for ind, future in futures:
@@ -160,24 +164,24 @@ class EmailNotification:
 
 
 
-def get_topic_and_prev_emails(
+def get_topic_and_prev_email(
         manager_id: int,
         client_id: int,
         chat_id: str,
         call: str | None,
         new_chat: bool,
         item_id: int | None,
-) -> tuple[bool, str, list[str]]:
+) -> tuple[bool, str, str]:
     """
     Update manager load and get previous mail from client
     If item_id passed, check existing item_id
     """
-    just_added, previous_emails = orm_update_manager_load(manager_id, client_id, chat_id, call, new_chat)
+    just_added, previous_email, client_name = orm_update_manager_load(manager_id, client_id, chat_id, call, new_chat)
     product = "НеОбъявление"
     if item_id is not None:
         product = orm_get_avito_product(item_id)
-    topic = f"{product}-{chat_id}"
-    return just_added, topic, previous_emails
+    topic = f"{product}-{chat_id}:{client_name}"
+    return just_added, topic, previous_email
 
 
 def create_msgsdata_for_email(manager_id: int, msgs: list[dict]) -> dict:
@@ -197,7 +201,7 @@ def create_msgsdata_for_email(manager_id: int, msgs: list[dict]) -> dict:
                 [
                     sequence,
                     executor.submit(
-                        get_topic_and_prev_emails,
+                        get_topic_and_prev_email,
                         manager_id, message["client_id"], message["chat_id"],
                         message["call"], message["new_chat"], message["item_id"]
                     )
@@ -212,17 +216,15 @@ def create_msgsdata_for_email(manager_id: int, msgs: list[dict]) -> dict:
                 messages.pop(sequence)
                 logger.error(repr(future.exception()))
             else:
-                _, topic, prev_emails = future.result()
+                _, topic, prev_email = future.result()
                 messages[sequence]["topic"] = topic
-                messages[sequence]["prev_emails"] = prev_emails
-
-
+                messages[sequence]["prev_email"] = prev_email
     return messages
 
 
 def send_notifications_on_email(
         manager_email: str,
-        emails_data: list[tuple[int, str, list[str]]],
+        emails_data: list[tuple[int, str, str]],
         alias_keys: list[Any] = None,
         view_result=False,
 ) -> None | list[list]:
@@ -230,7 +232,7 @@ def send_notifications_on_email(
     Send out notification on managers email
 
     :param manager_email: str
-    :param emails_data: list[tuple[client_id, subject, list[prev_emails_id]]]
+    :param emails_data: list[tuple[client_id, subject, prev_email_id]]
     :param alias_keys: list[Any] - replace res_key on alias key. zip(emails_data, alias_keys)
     :param view_result: bool - return results of sending
     :return: list[list]

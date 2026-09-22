@@ -47,7 +47,8 @@ class Clients(TimeStampMixin):
     phone = models.CharField(max_length=100, null=True, blank=True, verbose_name="Телефон клиента") # шифровать
     personal_discount = models.DecimalField(default=0.00, max_digits=4, decimal_places=2, verbose_name="Персональная скидка в %")
 
-    emails_history = models.TextField(default='', blank=True, verbose_name="emails_history")
+    previous_email = models.CharField(default='', max_length=100, blank=True, verbose_name="id предыдущего письма-уведомления по клиенту")
+    emails_count = models.PositiveSmallIntegerField(default=0, verbose_name="Количество отправленных клиентом сообщений")
 
     pinned_manager = models.ForeignKey(
         to=Managers,

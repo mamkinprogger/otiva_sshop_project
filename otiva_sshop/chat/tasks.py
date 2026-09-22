@@ -75,7 +75,7 @@ def send_manager(manager_id: int, manager_email: str, manager_key: str):
     messages_data = create_msgsdata_for_email(manager_id, choose_messages(manager_key))
     res_sending = send_notifications_on_email(
         manager_email,
-        emails_data=[(i["client_id"], i["topic"], i["prev_emails"]) for i in messages_data.values()],
+        emails_data=[(i["client_id"], i["topic"], i["prev_email"]) for i in messages_data.values()],
         alias_keys=[i for i in messages_data],
         view_result=True,
     )

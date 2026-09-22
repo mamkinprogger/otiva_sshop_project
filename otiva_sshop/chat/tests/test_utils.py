@@ -1,3 +1,4 @@
+import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 
@@ -6,8 +7,6 @@ import pytest
 from chat.utils import MessageFromWebhook, MessageFieldsException, CreateMailException, ShopEmail, \
     InvalidMailFieldException, SMTPEmailSender
 
-# Есть смысл добавить caplog для проверки logger.warning/error и проверить, что __exit__ действительно закрывает соединение при исключении.
-# fix name@name validation
 
 @pytest.fixture
 def shop_email():
@@ -16,6 +15,10 @@ def shop_email():
         subject="Hello",
         text="Test message",
     )
+
+@pytest.fixture
+async def logger_off(mocker):
+    mocker.patch("chat.utils.logger")
 
 
 class TestMessageFromWebhook:
@@ -94,10 +97,13 @@ class TestMessageFromWebhook:
         with pytest.raises(MessageFieldsException):
             MessageFromWebhook().create()
 
-    def test_create_message_with_invalid_fields(self, correct_message_factory):
+    def test_create_message_with_invalid_fields(self, correct_message_factory, logger_off):
         msg =  correct_message_factory()
         msg["chat_id"] = 123
-        assert MessageFromWebhook(msg).create() is False
+
+        result = MessageFromWebhook(msg).create()
+
+        assert result is False
 
     @pytest.mark.parametrize("msg",[
         {},
@@ -110,6 +116,40 @@ class TestMessageFromWebhook:
     def test_raised_exception_error_due_to_incorrect_message(self, msg):
         with pytest.raises(MessageFieldsException):
             MessageFromWebhook(msg).create()
+
+    @pytest.mark.parametrize("wc, ii, t, r",[
+        [True, True, True, True],
+        [True, True, True, False],
+        [True, True, False, True],
+        [True, False, True, True],
+        [False, True, True, True],
+    ])
+    def test_unpack_str_msg(self, correct_message_factory, wc, ii, t, r):
+        d = {
+            "with_call": wc,
+            "item_id": ii,
+            "text": t,
+            "read": r
+        }
+        msg_data = correct_message_factory(**d)
+        msg = MessageFromWebhook(msg_data).create()
+        msg_str = MessageFromWebhook(msg_data).create_str()
+
+        assert MessageFromWebhook().unpack_str_msg(msg_str) == msg
+
+    @pytest.mark.parametrize("text",[
+        "Something text: you know",
+        "Something text: you know; but:yoy--NO",
+        "Something text: you know; but:yoy--NO~67"
+    ])
+    def test_unpack_str_msg_with_strange_text(self, correct_message_factory, text):
+        msg_data = correct_message_factory(text=True)
+        msg_data["content"]["text"] = text
+
+        msg = MessageFromWebhook(msg_data).create()
+        msg_str = MessageFromWebhook(msg_data).create_str()
+        assert msg["text"] == text
+        assert MessageFromWebhook().unpack_str_msg(msg_str) == msg
 
 
 class TestSendEmail:
@@ -238,14 +278,12 @@ class TestSMTPEmailSender:
             mail.as_string(),
         )
 
-    def test_send_reconnects_after_disconnect(self, sender, mail, mocker):
+    def test_send_reconnects_after_disconnect(self, sender, mail, mocker, caplog):
         old_client = mocker.MagicMock()
         new_client = mocker.MagicMock()
 
         sender.client = old_client
-        old_client.sendmail.side_effect = (
-            smtplib.SMTPServerDisconnected()
-        )
+        old_client.sendmail.side_effect = smtplib.SMTPServerDisconnected()
 
         close_mock = mocker.patch.object(
             sender,
@@ -260,17 +298,23 @@ class TestSMTPEmailSender:
             "connect",
             side_effect=reconnect,
         )
-        sender.send(mail)
+
+        with caplog.at_level(logging.WARNING, logger="chat_logger"):
+            sender.send(mail)
 
         close_mock.assert_called_once()
         connect_mock.assert_called_once()
-
         old_client.sendmail.assert_called_once()
-
         new_client.sendmail.assert_called_once_with(
             "sender@example.com",
             "recipient@example.com",
             mail.as_string(),
+        )
+        assert any(
+            record.name == "chat_logger"
+            and record.levelno == logging.WARNING
+            and "connection lost, reconnecting" in record.message.lower()
+            for record in caplog.records
         )
 
     def test_close_without_client(self, sender):
@@ -278,7 +322,7 @@ class TestSMTPEmailSender:
         sender.close()
         assert sender.client is None
 
-    def test_close_quits_client(self, sender, mocker,):
+    def test_close_quits_client(self, sender, mocker):
         client = mocker.MagicMock()
         sender.client = client
 
@@ -322,25 +366,23 @@ class TestValidMailsIds:
         mails = ["<abc.123@example.com>", "<def.334.@example.com>",]
         ShopEmail.valid_mails_ids(mails)
 
-    def test_mails_must_be_list(self):
-        with pytest.raises(CreateMailException, match="mails is not a list"):
-            ShopEmail.valid_mails_ids("abc@example.com")
+    @pytest.mark.parametrize("val, expect", [
+        ("abc@example.com", "mails is not a list"),
+        ([], "not mails in list"),
+        ([123], "mail_id is not a str"),
+    ], ids=["list", "cant be empty", "string"])
+    def test_mails_must_be(self, val, expect):
+        with pytest.raises(CreateMailException, match=expect):
+            ShopEmail.valid_mails_ids(val)
 
-    def test_mails_cannot_be_empty(self):
-        with pytest.raises(CreateMailException, match="not mails in list"):
-            ShopEmail.valid_mails_ids([])
-
-    def test_mail_id_must_be_string(self):
-        with pytest.raises(CreateMailException, match="mail_id is not a str",):
-            ShopEmail.valid_mails_ids([123])
-
-    def test_mail_id_cannot_be_empty(self):
-        with pytest.raises(InvalidMailFieldException, match="mail_id is empty"):
-            ShopEmail.valid_mails_ids(["   "])
-
-    def test_mail_id_cannot_contain_invalid_characters(self):
-        with pytest.raises(InvalidMailFieldException, match="mail_id contain invalid characters"):
-            ShopEmail.valid_mails_ids(["<abc@example.com>!"])
+    @pytest.mark.parametrize("val, expect", [
+        (["   "], "mail_id is empty"),
+        ([""], "mail_id is empty"),
+        (["<abc@example.com>!"], "mail_id contain invalid characters"),
+    ], ids=["be_empty_cause_spaces", "be_empty", "contain_invalid_characters"])
+    def test_mail_id_cannot(self, val, expect):
+        with pytest.raises(InvalidMailFieldException, match=expect):
+            ShopEmail.valid_mails_ids(val)
 
 
 class TestValidEmail:
@@ -384,7 +426,7 @@ class TestValidEmail:
         assert ShopEmail.valid_email(email) is False
 
     @pytest.mark.parametrize("email",[
-        None, 123, [], {},
+        None, 123, [], {}, b"",
     ])
     def test_email_must_be_string(self, email):
         with pytest.raises(CreateMailException, match="email is not a str"):
@@ -392,6 +434,7 @@ class TestValidEmail:
 
 
 class TestCreateMail:
+    @pytest.mark.slow
     def test_create_mail(self, shop_email):
         mail = shop_email.create_mail()
 
@@ -402,6 +445,7 @@ class TestCreateMail:
         assert mail["Message-ID"]
         assert "Test message" in mail.as_string()
 
+    @pytest.mark.slow
     def test_create_mail_without_text(self):
         email = ShopEmail(to_email="recipient@example.com", subject="Hello")
         mail = email.create_mail()
@@ -409,6 +453,7 @@ class TestCreateMail:
         assert mail["Subject"] == "Hello"
         assert mail["To"] == "recipient@example.com"
 
+    @pytest.mark.slow
     def test_subject_defaults_to_empty_string(self):
         email = ShopEmail(to_email="recipient@example.com")
         mail = email.create_mail()
@@ -434,6 +479,7 @@ class TestCreateMail:
         with pytest.raises(InvalidMailFieldException, match="Head of email is invalid"):
             shop_email.create_mail()
 
+    @pytest.mark.slow
     def test_reply_mail(self, shop_email):
         previous_mails = ["<first@example.com>", "<second@example.com>"]
         mail = shop_email.create_mail(previous_mails)
@@ -442,23 +488,20 @@ class TestCreateMail:
         assert mail["In-Reply-To"] == "<second@example.com>"
         assert mail["References"] == "<first@example.com> <second@example.com>"
 
+    @pytest.mark.slow
     def test_reply_uses_last_message_as_in_reply_to(self, shop_email):
         previous_mails = [ "<one@example.com>", "<two@example.com>", "<three@example.com>"]
         mail = shop_email.create_mail(previous_mails)
 
         assert mail["In-Reply-To"] == "<three@example.com>"
 
-    def test_invalid_previous_mails_do_not_break_creation(self, shop_email):
-        previous_mails = ["<invalid@example.com>!"]
-
-        mail = shop_email.create_mail(previous_mails)
-
-        assert mail["Subject"] == "Hello"
-        assert mail["In-Reply-To"] is None
-        assert mail["References"] is None
-
-    def test_empty_previous_mails(self, shop_email):
-        mail = shop_email.create_mail([])
+    @pytest.mark.slow
+    @pytest.mark.parametrize("prev_mails", [
+        ["<invalid@example.com>!"],
+        []
+    ], ids=["invalid_char", "empty"])
+    def test_invalid_previous_mails_do_not_break_creation(self, shop_email, prev_mails, logger_off):
+        mail = shop_email.create_mail(prev_mails)
 
         assert mail["Subject"] == "Hello"
         assert mail["In-Reply-To"] is None
@@ -476,7 +519,6 @@ class TestCreateMail:
             # EMAIL_DOMAIN_NAME
             mocker.ANY,
         )
-
         assert mail["Message-ID"] == "<generated@example.com>"
 
 
@@ -498,18 +540,10 @@ class TestSendEmailFromYandex:
 
     def test_send_emails_successfully(self, shop_email, mail, mocker):
         sender = mocker.MagicMock()
+        sender_class = mocker.patch("chat.utils.SMTPEmailSender")
+        sender_class.return_value.__enter__.return_value = sender
 
-        sender_class = mocker.patch(
-            "chat.utils.SMTPEmailSender"
-        )
-
-        sender_class.return_value.__enter__.return_value = (
-            sender
-        )
-
-        result = shop_email.send_email_from_yandex(
-            [mail]
-        )
+        result = shop_email.send_email_from_yandex([mail])
 
         sender_class.assert_called_once_with(
             shop_email.from_email,
@@ -518,12 +552,8 @@ class TestSendEmailFromYandex:
             465,
             7,
         )
-
         sender.send.assert_called_once_with(mail)
-
-        assert result == [
-            ("<message@example.com>", True)
-        ]
+        assert result == [("<message@example.com>", True, None)]
 
     def test_send_multiple_emails(
         self,
@@ -539,74 +569,68 @@ class TestSendEmailFromYandex:
         mail2["Message-ID"] = "<two@example.com>"
 
         sender = mocker.MagicMock()
+        sender_class = mocker.patch("chat.utils.SMTPEmailSender")
+        sender_class.return_value.__enter__.return_value = sender
 
-        sender_class = mocker.patch(
-            "chat.utils.SMTPEmailSender"
-        )
+        result = shop_email.send_email_from_yandex([mail1, mail2])
 
-        sender_class.return_value.__enter__.return_value = (
-            sender
-        )
-
-        result = shop_email.send_email_from_yandex(
-            [mail1, mail2]
-        )
-
-        assert result == [
-            ("<one@example.com>", True),
-            ("<two@example.com>", True),
-        ]
+        assert result == [("<one@example.com>", True, None), ("<two@example.com>", True, None)]
         assert sender.send.call_count == 2
 
-    # def test_smtp_exception_is_reraised(
-    #     self,
-    #     shop_email,
-    #     mail,
-    #     mocker,
-    # ):
-    #     smtp_error = smtplib.SMTPException(
-    #         "SMTP error"
-    #     )
-    #
-    #     sender = mocker.MagicMock()
-    #     sender.send.side_effect = smtp_error
-    #
-    #     sender_class = mocker.patch(
-    #         "chat.utils.SMTPEmailSender"
-    #     )
-    #
-    #     sender_class.return_value.__enter__.return_value = (
-    #         sender
-    #     )
-    #
-    #     with pytest.raises(
-    #         smtplib.SMTPException,
-    #         match="SMTP error",
-    #     ):
-    #         shop_email.send_email_from_yandex([mail])
+    @pytest.mark.parametrize("type_error", [
+        smtplib.SMTPException("SMTP error"),
+        RuntimeError("unexpected error")
+    ])
+    def test_smtp_exception_is_reraised(
+        self,
+        shop_email,
+        mail,
+        mocker,
+        type_error,
+        logger_off
+    ):
+        sender = mocker.MagicMock()
+        sender.send.side_effect = type_error
+        sender_class = mocker.patch("chat.utils.SMTPEmailSender")
+        sender_class.return_value.__enter__.return_value = sender
 
-    # def test_unexpected_exception_is_reraised(
-    #     self,
-    #     shop_email,
-    #     mail,
-    #     mocker,
-    # ):
-    #     sender = mocker.MagicMock()
-    #     sender.send.side_effect = RuntimeError(
-    #         "unexpected"
-    #     )
-    #
-    #     sender_class = mocker.patch(
-    #         "chat.utils.SMTPEmailSender"
-    #     )
-    #
-    #     sender_class.return_value.__enter__.return_value = (
-    #         sender
-    #     )
-    #
-    #     with pytest.raises(
-    #         RuntimeError,
-    #         match="unexpected",
-    #     ):
-    #         shop_email.send_email_from_yandex([mail])
 
+        results = shop_email.send_email_from_yandex([mail])
+
+        sender.send.assert_called_once_with(mail)
+        assert results == [(mail["Message-ID"], False, type_error)]
+
+
+
+    def test_send_multiple_emails_with_success_and_failure(
+            self,
+            shop_email,
+            mocker,
+            logger_off
+    ):
+        mail1 = MIMEMultipart()
+        mail1["To"] = "one@example.com"
+        mail1["Message-ID"] = "<one@example.com>"
+
+        mail2 = MIMEMultipart()
+        mail2["To"] = "two@example.com"
+        mail2["Message-ID"] = "<two@example.com>"
+
+        smtp_error = smtplib.SMTPException("SMTP error")
+
+        sender = mocker.MagicMock()
+        sender.send.side_effect = [None, smtp_error]
+        sender_class = mocker.patch("chat.utils.SMTPEmailSender")
+        sender_class.return_value.__enter__.return_value = sender
+
+        results = shop_email.send_email_from_yandex([mail1, mail2])
+
+        sender.send.assert_has_calls([
+            mocker.call(mail1),
+            mocker.call(mail2),
+        ])
+        assert sender.send.call_count == 2
+        assert results == [
+            ("<one@example.com>", True, None),
+            ("<two@example.com>", False, smtp_error),
+        ]

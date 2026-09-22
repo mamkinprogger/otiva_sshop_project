@@ -7,7 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from app.misc.redis_misc import redis_client, redis_aclient_broker
 from app.settings import AVITO_STORE_ID
 from chat.db_orm import orm_contact_info_manager_from_client
-from chat.tasks import send_message_to_manager
+from chat.tasks import send_notification_task
 from chat.utils import MessageFromWebhook, MessageFieldsException
 
 logger = logging.getLogger("chat_logger")
@@ -90,7 +90,7 @@ async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]
     msg_to_queue = f"{new_chat=};{msg.create_str()}"
     await redis_aclient_broker.lpush(target_manager, msg_to_queue)
 
-    send_message_to_manager.delay(int(target_manager), manager_email.decode())
+    send_notification_task.delay(int(target_manager), manager_email.decode())
 
     if new_chat:
         await redis_client.hset("managers", target_manager, int(managers[target_manager]) + 1)

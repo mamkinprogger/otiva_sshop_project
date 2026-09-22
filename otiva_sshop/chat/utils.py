@@ -35,6 +35,8 @@ class MessageFromWebhook:
             read: int = None,
             ):
         """update fields if msg passed"""
+        self.JOIN_CHAR = "~"
+
         self.client_id = client_id
         self.chat_id = chat_id
         self.sending_time = sending_time
@@ -113,23 +115,22 @@ class MessageFromWebhook:
         return correct_msg
 
     def create_str(self):
-        return '~'.join(f"{k}:{v}" for k, v in self.create().items())
+        return self.JOIN_CHAR.join(f"{k}:{v}" for k, v in self.create().items())
 
-    @staticmethod
-    def unpack_str_msg(str_msg: str):
+    def unpack_str_msg(self, str_msg: str):
         """Unpack msg wich convert to str self.create_str"""
         message = dict()
 
-        for field in str_msg.split("~"):
+        for field in str_msg.split(self.JOIN_CHAR):
             key, separator, value = field.partition(":")
             if separator:
-                if key in ["client_id", "item_id", "sending_time"]:
+                if key in ["client_id", "item_id", "sending_time", "read"]:
                     message[key] = int(value) if value not in ("", "None") else None
                 else:
                     message[key] = value if value not in ("", "None") else None
             else:
                 text_value = message.get("text", "")
-                message["text"] = text_value + field
+                message["text"] = text_value + self.JOIN_CHAR + field
         return message
 
     def __str__(self):

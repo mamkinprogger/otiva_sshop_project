@@ -1,86 +1,14 @@
 import logging
 import smtplib
 import uuid
-import concurrent.futures
 
 from app.misc.celery import celery_client
 from app.misc.redis_misc import redis_client_broker
-from chat.db_orm import orm_update_manager_load
 
 from chat.utils import MessageFromWebhook
-from chat.notifications.email_sending import send_notification_on_email
-from goods.db_orm import orm_get_avito_product
+from chat.notifications.email_sending import send_notifications_on_email, create_msgsdata_for_email
 
 logger = logging.getLogger("celery_logger")
-
-class EmailForManager:
-    def __init__(self, manager_id: int, messages: list):
-        """Modifies elements in messages"""
-
-        if not isinstance(messages, list):
-            raise TypeError("messages must be a list")
-        elif not isinstance(manager_id, int):
-            raise TypeError("manager_id must be an integer")
-
-        self.manager_id = manager_id
-        self.messages = {ind: msg for ind, msg in enumerate(messages)}
-
-    def get_topic_and_prev_emails(
-            self,
-            client_id: int,
-            chat_id: str,
-            call: str | None,
-            new_chat: bool,
-            item_id: int | None,
-    ) -> tuple[bool, str, list[str]]:
-        """
-        Update manager load and get previous mail from client
-        If item_id passed, check existing item_id
-        """
-        just_added, previous_emails = orm_update_manager_load(self.manager_id, client_id, chat_id, call, new_chat)
-        product = "НеОбъявление" # TODO убрать клиента из redis:create_chat
-        if item_id:
-            product = orm_get_avito_product(item_id)
-        topic = f"{product}-{chat_id}"
-        return just_added, topic, previous_emails
-
-
-    def append_emails_fields_from_wk_message(self):
-        """
-        Extends the dictionary passed to the manager with `topic` and `prev_emails` fields.
-
-        Removes invalid messages from the array.
-
-        Makes db queries
-        """
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [
-                [
-                    sequence,
-                    executor.submit(
-                        self.get_topic_and_prev_emails,
-                        message["client_id"], message["chat_id"],
-                        message["call"], message["new_chat"], message["item_id"]
-                    )
-                ]
-                for sequence, message in self.messages.items()
-            ]
-            for sequence, future in futures:
-                if future.exception() is not None:
-                    self.messages.pop(sequence)
-                    logger.error(repr(future.exception()))
-                else:
-                    _, topic, prev_emails = future.result()
-                    self.messages[sequence]["topic"] = topic
-                    self.messages[sequence]["prev_emails"] = prev_emails
-
-    def create_email_fields(self):
-        self.append_emails_fields_from_wk_message()
-        return self.messages
-
-    def __str__(self):
-        return f"{self.manager_id}:{[i for i in self.messages]}"
-
 
 
 def release_manager_lock(lock_key: str, lock_token: str) -> None:
@@ -113,8 +41,7 @@ def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
     msg_entity = redis_client_broker.rpop(msgs_key)
     while msg_entity:
         new_chat, _, msg_data = msg_entity.decode().partition(";")
-        message = MessageFromWebhook.unpack_str_msg(msg_data)
-
+        message = MessageFromWebhook().unpack_str_msg(msg_data)
         count = viewed.get(message["chat_id"], 0)
         if count+1 > max_emails and not message["read"]:
             pass
@@ -127,6 +54,37 @@ def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
     return msgs
 
 
+def send_manager(manager_id: int, manager_email: str, manager_key: str):
+    """
+    Send notification to manager
+
+    return failed messages wich down with SMTPError
+
+    :param manager_id:
+    :param manager_email:
+    :param manager_key: redis_list_key of messages to manager
+    :return: list[str[failed_msgs]]
+    """
+    messages_data = create_msgsdata_for_email(manager_id, choose_messages(manager_key))
+    res_sending = send_notifications_on_email(
+        manager_email,
+        emails_data=[(i["client_id"], i["topic"], i["prev_emails"]) for i in messages_data.values()],
+        alias_keys=[i for i in messages_data],
+        view_result=True,
+    )
+
+    retries = []
+    for res in res_sending:
+        if len(res) != 3:
+            continue
+        msg = messages_data[res[0]]
+        fail_type = res[2]
+        if isinstance(fail_type, smtplib.SMTPException):
+            msg_str = MessageFromWebhook(msg).create_str()
+            retries.append(f"new_chat={msg["new_chat"]};{msg_str}")
+    return retries
+
+
 @celery_client.task(
     bind=True,
     ignore_result=True,
@@ -136,7 +94,7 @@ def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
     # acks_late=True,; не терять смски при worker kill. сделать pending-messages,processing-messages(lmove/blmove) в redis
     reject_on_worker_lost=True,
 )
-def send_message_to_manager(self, manager: int, manager_email: str):
+def send_notification_task(self, manager: int, manager_email: str):
     s_manager = str(manager)
     lock_key = f"{manager}_lock"
     lock_token = str(uuid.uuid4())
@@ -149,27 +107,45 @@ def send_message_to_manager(self, manager: int, manager_email: str):
         raise self.retry()
 
     try:
-        messages = EmailForManager(manager, choose_messages(s_manager)).create_email_fields()
-        res_sending = send_notification_on_email(
-            manager_email,
-            emails_data=[(i["client_id"], i["topic"], i["prev_emails"]) for i in messages.values()],
-            alias_keys=[i for i in messages],
-            view_result=True,
-        )
-
-        retries = []
-        for res in res_sending:
-            if len(res) != 3:
-                continue
-            msg = messages[res[0]]
-            fail_type = res[2]
-            if isinstance(fail_type, smtplib.SMTPException):
-                retries.append(MessageFromWebhook(msg).create_str())
-            else:
-                logger.info(f"Другая ошибка: {repr(fail_type)}")
-        logger.info(f"Сообщения на повторную отправку {retries}")
-
+        fails = send_manager(manager, manager_email, s_manager)
+        if fails:
+            redis_client_broker.lpush(f"{s_manager}:retry", *fails)
+            notification_retry_task.apply_async((manager, manager_email), countdown=5)
     except Exception as e:
         logger.error(repr(e), exc_info=True)
+    finally:
+        release_manager_lock(lock_key, lock_token)
+
+
+@celery_client.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=8,
+    retry_jitter=True,
+    # acks_late=True,; не терять смски при worker kill. сделать pending-messages,processing-messages(lmove/blmove) в redis
+    reject_on_worker_lost=True,
+)
+def notification_retry_task(self, manager: int, manager_email: str):
+    manager_key = f"{manager}:retry"
+    lock_key = f"{manager_key}_lock"
+    lock_token = str(uuid.uuid4())
+
+    if redis_client_broker.llen(manager_key) == 0:
+        logger.info(f"Retries for {manager_key} already done")
+        return
+    elif not redis_client_broker.set(lock_key, lock_token, nx=True, ex=60):
+        logger.info(f"Manager {manager_key} is locked, retrying later")
+        raise self.retry()
+
+    try:
+        fails = send_manager(manager, manager_email, manager_key)
+        if fails:
+            if self.request.retries == self.max_retries - 1:
+                pass
+            else:
+                redis_client_broker.lpush(manager_key, *fails)
+                self.retry()
+    except Exception as e:
+        logger.error(f"Retry_MsgTask {repr(e)}", exc_info=True)
     finally:
         release_manager_lock(lock_key, lock_token)

@@ -158,7 +158,7 @@ class TestIdentifyManager:
         celery_mock = MagicMock()
         celery_mock.delay.return_value = None
         monkeypatch.setattr(
-            views, "send_message_to_manager", celery_mock
+            views, "send_notification_task", celery_mock
         )
         return celery_mock
 
@@ -187,7 +187,7 @@ class TestIdentifyManager:
 
         assert await pd_redis_client.hget("managers", 11111) == b"1"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=True".encode()
+        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
         assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
 
     async def test_client_in_creating_process(
@@ -208,7 +208,7 @@ class TestIdentifyManager:
 
         assert await pd_redis_client.hget("managers", 11111) == b"0"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(21111, 0, -1))[0].split(b";")[1] == "new_chat=False".encode()
+        assert (await pd_redis_aclient_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
         assert await pd_redis_client.get(msg.chat_id) == f"21111:{msg.sending_time - 20}".encode()
 
     async def test_cached_chat(
@@ -230,7 +230,7 @@ class TestIdentifyManager:
         assert await pd_redis_client.hget("managers", 11111) == b"0"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
         assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=False".encode()
+        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_cached_chat_new_question_from_client(
             self,
@@ -251,7 +251,7 @@ class TestIdentifyManager:
         assert await pd_redis_client.hget("managers", 11111) == b"0"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
         assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=False".encode()
+        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_cached_chat_expired(
             self,
@@ -271,7 +271,7 @@ class TestIdentifyManager:
         assert await pd_redis_client.hget("managers", 11111) == b"0"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
         assert await pd_redis_client.get(msg.chat_id) == f"21111:{msg.sending_time}".encode()
-        assert (await pd_redis_aclient_broker.lrange(21111, 0, -1))[0].split(b";")[1] == "new_chat=False".encode()
+        assert (await pd_redis_aclient_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_clients_managers_conflict(self, monkeypatch, pd_redis_client, correct_message_factory):
         self._celery_mock(monkeypatch)
@@ -309,7 +309,7 @@ class TestIdentifyManager:
 
         assert await pd_redis_client.hget("managers", 11111) == b"1"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=True".encode()
+        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
         assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
 
     async def test_existing_client_chatting_while_his_manager_updated(
@@ -330,7 +330,7 @@ class TestIdentifyManager:
 
         assert await pd_redis_client.hget("managers", 11111) == b"0"
         assert await pd_redis_client.hget("managers", 21111) == b"0"
-        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[1] == "new_chat=False".encode()
+        assert (await pd_redis_aclient_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
         assert await pd_redis_client.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
 
 

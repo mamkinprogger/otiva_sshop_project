@@ -2,7 +2,7 @@ import logging
 import smtplib
 import uuid
 
-from app.misc.celery import celery
+from app.misc.celery_misc import celery
 from app.misc.redis_misc import redis_broker
 
 from chat.utils import MessageFromWebhook

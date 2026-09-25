@@ -10,4 +10,3 @@ celery = Celery('otiva_shop')
 celery.config_from_object(CELERY)
 
 celery.autodiscover_tasks()
-

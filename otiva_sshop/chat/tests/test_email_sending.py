@@ -1,19 +1,30 @@
 from email.mime.multipart import MIMEMultipart
+from email.utils import make_msgid
 
 import pytest
-
 
 from chat.notifications.email_sending import (
     EmailNotification,
     EmailNotificationTypeError,
     EmailNotificationFieldError,
-    EmailNotificationNoData, create_msgsdata_for_email, get_topic_and_prev_email,
+    EmailNotificationNoData, load_and_extend_data_for_email, get_topic_and_prev_email,
 )
 from chat.utils import MessageFieldsException
+import chat.notifications.email_sending as email_sending
+
 
 @pytest.fixture
 async def logger_off(mocker):
     mocker.patch("chat.notifications.email_sending.logger")
+
+@pytest.fixture
+def pd_redis_broker(monkeypatch, test_redis_broker):
+    monkeypatch.setattr(
+        email_sending,
+        "redis_broker",
+        test_redis_broker,
+    )
+    return test_redis_broker
 
 @pytest.fixture
 def emails_data():
@@ -252,6 +263,9 @@ class TestCreateEmailsList:
         shop_email = mocker.patch("chat.notifications.email_sending.ShopEmail")
         mail = {"Message-ID": "<message-123@example.com>"}
         shop_email.return_value.create_mail.return_value = mail
+        redis_broker_mock = mocker.patch("chat.notifications.email_sending.redis_broker")
+        redis_broker_mock.rpop.return_value = None
+
         notification = EmailNotification(
             manager_email="manager@example.com",
             emails_data=[
@@ -262,7 +276,8 @@ class TestCreateEmailsList:
         result = notification.create_emails_list()
 
         shop_email.assert_called_once_with("manager@example.com", "topic", "topic")
-        shop_email.return_value.create_mail.assert_called_once_with(["11.aa"])
+        redis_broker_mock.rpop.assert_called_once()
+        shop_email.return_value.create_mail.assert_called_once_with(["11.aa"], None)
         assert result == [mail]
         assert notification.emails_data == {
             "<message-123@example.com>": {
@@ -288,57 +303,60 @@ class TestCreateEmailsList:
         assert isinstance(result[0], MIMEMultipart)
         assert notification.emails_data[result[0]["Message-ID"]]["alias_key"] == "client-alias"
 
-    def test_multiple_emails_are_created(self, notification, mocker):
-        executor = mocker.patch("chat.notifications.email_sending.concurrent.futures.ProcessPoolExecutor")
+    @pytest.mark.slow
+    def test_multiple_emails_are_created(self, notification, pd_redis_broker, mocker):
+        mail_id1 = make_msgid()
+        mail_id2 = make_msgid()
 
-        future_1 = mocker.Mock()
-        future_1.exception.return_value = None
-        future_1.result.return_value = {"Message-ID": "<message-1@example.com>"}
+        pd_redis_broker.lpush("mails_ids", mail_id1, mail_id2)
 
-        future_2 = mocker.Mock()
-        future_2.exception.return_value = None
-        future_2.result.return_value = {"Message-ID": "<message-2@example.com>"}
-
-        executor.return_value.__enter__.return_value.submit.side_effect = [
-            future_1,
-            future_2,
+        shop_email = mocker.patch("chat.notifications.email_sending.ShopEmail")
+        mail1 = {"Message-ID": mail_id1}
+        mail2 = {"Message-ID": mail_id2}
+        shop_email.return_value.create_mail.side_effect = [
+            mail1,
+            mail2,
         ]
 
         result = notification.create_emails_list()
 
-        assert result == [
-            {"Message-ID": "<message-1@example.com>"},
-            {"Message-ID": "<message-2@example.com>"},
+        assert pd_redis_broker.llen("mails_ids") == 0
+        assert result == [mail1, mail2]
+        assert notification.emails_data == {
+            mail_id1: {
+                "client_id": 101,
+                "topic": "topic-1",
+                "prev_email": "11.aa",
+                "alias_key": None,
+            },
+            mail_id2: {
+                "client_id": 102,
+                "topic": "topic-2",
+                "prev_email": "22.bb",
+                "alias_key": None,
+            },
+        }
+
+    @pytest.mark.slow
+    def test_failed_mail_is_removed_and_logged(self, notification, pd_redis_broker, mocker):
+        mail_id = make_msgid()
+        pd_redis_broker.lpush("mails_ids", "wasted_id", mail_id)
+
+        shop_email = mocker.patch("chat.notifications.email_sending.ShopEmail")
+        mail = {"Message-ID": mail_id}
+        shop_email.return_value.create_mail.side_effect = [
+            RuntimeError("AonoNeTak"),
+            mail,
         ]
-        assert "<message-1@example.com>" in notification.emails_data
-        assert "<message-2@example.com>" in notification.emails_data
-
-        assert notification.emails_data["<message-1@example.com>"]["client_id"] == 101
-        assert notification.emails_data["<message-2@example.com>"]["client_id"] == 102
-
-    def test_failed_future_is_removed_and_logged(self, notification, mocker):
-        executor = mocker.patch("chat.notifications.email_sending.concurrent.futures.ProcessPoolExecutor")
         logger = mocker.patch("chat.notifications.email_sending.logger")
 
-        future_1 = mocker.Mock()
-        future_1.exception.return_value = RuntimeError("boom")
-
-        future_2 = mocker.Mock()
-        future_2.exception.return_value = None
-        future_2.result.return_value = {"Message-ID": "<message-2@example.com>"}
-
-        executor.return_value.__enter__.return_value.submit.side_effect = [
-            future_1,
-            future_2,
-        ]
-
         result = notification.create_emails_list()
 
-        assert result == [{"Message-ID": "<message-2@example.com>"}]
-
+        assert pd_redis_broker.llen("mails_ids") == 0
+        assert result == [mail]
         assert 0 not in notification.emails_data
-        assert "<message-2@example.com>" in notification.emails_data
-        logger.error.assert_called_once_with(repr(future_1.exception.return_value))
+        assert mail_id in notification.emails_data
+        logger.error.assert_called_once()
 
 
 @pytest.mark.usefixtures("logger_off")
@@ -369,7 +387,7 @@ class TestCreateMsgsdataForEmail:
             },
         ]
 
-        result = create_msgsdata_for_email(manager_id=999, msgs=msgs)
+        result = load_and_extend_data_for_email(manager_id=999, msgs=msgs)
 
         assert result == {
             0: {
@@ -414,7 +432,7 @@ class TestCreateMsgsdataForEmail:
             }
         ]
 
-        result = create_msgsdata_for_email(manager_id=1, msgs=msgs)
+        result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
 
         assert result[0]["subject"] == "Hello"
         assert result[0]["item_id"] == 123
@@ -436,7 +454,7 @@ class TestCreateMsgsdataForEmail:
             }]
 
         with pytest.raises(MessageFieldsException):
-            create_msgsdata_for_email(manager_id=1, msgs=msgs)
+            load_and_extend_data_for_email(manager_id=1, msgs=msgs)
 
     def test_failed_message_is_removed(self, mocker):
         error = ValueError("val error")
@@ -455,7 +473,7 @@ class TestCreateMsgsdataForEmail:
             }
         ]
 
-        result = create_msgsdata_for_email(manager_id=1, msgs=msgs)
+        result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
         assert result == {}
 
     def test_failed_message_does_not_affect_other_messages(self, mocker):
@@ -486,7 +504,7 @@ class TestCreateMsgsdataForEmail:
             },
         ]
 
-        result = create_msgsdata_for_email(manager_id=1, msgs=msgs)
+        result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
 
         assert result == {
             1: {
@@ -503,7 +521,7 @@ class TestCreateMsgsdataForEmail:
     def test_empty_messages_returns_empty_dict(self, mocker):
         get_topic_and_prev_email_mock = mocker.patch("chat.notifications.email_sending.get_topic_and_prev_email")
 
-        result = create_msgsdata_for_email(
+        result = load_and_extend_data_for_email(
             manager_id=1,
             msgs=[],
         )

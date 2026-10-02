@@ -17,3 +17,4 @@ db.sqlite3
 
 _fast_folder/
 enter_in_container/
+celerybeat-schedule

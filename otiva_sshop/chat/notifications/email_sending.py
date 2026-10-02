@@ -1,11 +1,10 @@
 import logging
 import concurrent.futures
-import sys
 import threading
 from typing import Any
-from multiprocessing import get_context
 from email.mime.multipart import MIMEMultipart
 
+from app.misc.redis_misc import redis_broker
 from chat.db_orm import orm_update_manager_load, orm_update_client_emails_history
 from chat.utils import ShopEmail, MessageFieldsException
 from goods.db_orm import orm_get_avito_product
@@ -131,31 +130,27 @@ class EmailNotification:
             raise EmailNotificationNoData("Emails_data must be passed")
 
         mails_list = []
-        if len(self.emails_data) == 1:
-            key = list(self.emails_data)[0]
-            msg = self.emails_data[key]
-            prev_emails = [msg["prev_email"]] if msg["prev_email"] else None
-            mail = ShopEmail(self.manager_email, msg["topic"], msg["topic"]).create_mail(prev_emails)
-            self.emails_data[mail["Message-ID"]] = self.emails_data.pop(key)
-            mails_list.append(mail)
-        else:
-            cxt = get_context('spawn') if sys.platform == 'win32' else get_context('fork')
-            with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=cxt) as executor:
-                futures = [
-                    [ind, executor.submit(
-                        ShopEmail(self.manager_email, mail["topic"], mail["topic"]).create_mail,
-                        [mail["prev_email"]] if mail["prev_email"] else None
-                    )]
-                    for ind, mail in self.emails_data.items()
-                ]
-            for ind, future in futures:
-                if future.exception() is not None:
-                    self.emails_data.pop(ind)
-                    logger.error(repr(future.exception()))
-                else:
-                    mail = future.result()
-                    self.emails_data[mail["Message-ID"]] = self.emails_data.pop(ind)
-                    mails_list.append(mail)
+        for key in list(self.emails_data):
+            try:
+                mail = self.emails_data[key]
+                prev_emails = mail["prev_email"]
+                email_id = redis_broker.rpop("mails_ids")
+                if prev_emails:
+                    prev_emails = [prev_emails]
+                if email_id:
+                    email_id = email_id.decode()
+
+                email = ShopEmail(
+                    self.manager_email,
+                    mail["topic"],
+                    mail["topic"]
+                ).create_mail(prev_emails, email_id)
+
+                self.emails_data[email["Message-ID"]] = self.emails_data.pop(key)
+                mails_list.append(email)
+            except Exception as e:
+                self.emails_data.pop(key)
+                logger.error(repr(e))
         return mails_list
 
 
@@ -184,7 +179,7 @@ def get_topic_and_prev_email(
     return just_added, topic, previous_email
 
 
-def create_msgsdata_for_email(manager_id: int, msgs: list[dict]) -> dict:
+def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
     """
     Makes db queries
 

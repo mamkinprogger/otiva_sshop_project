@@ -1,16 +1,20 @@
+import concurrent.futures
 import logging
 import smtplib
+import sys
 import uuid
+from email.utils import make_msgid
+from multiprocessing import get_context
 
 from app.misc.celery_misc import celery
 from app.misc.redis_misc import redis_broker
-
+from app.settings import EMAIL_DOMAIN_NAME
+from chat.notifications.email_sending import send_notifications_on_email, load_and_extend_data_for_email
 from chat.utils import MessageFromWebhook
-from chat.notifications.email_sending import send_notifications_on_email, create_msgsdata_for_email
 
 logger = logging.getLogger("celery_logger")
 
-
+# можно переписать на контекстный менеджер и везде где нужен lock_key делать это все в контекстовике
 def release_manager_lock(lock_key: str, lock_token: str) -> None:
     """
     Delete lock_key if lock_key value is lock_token
@@ -34,45 +38,114 @@ def release_manager_lock(lock_key: str, lock_token: str) -> None:
     )
 
 
-def choose_messages(msgs_key: str, max_emails=2) -> list[dict]:
+def create_lock_key(key: str, ttl=60) -> tuple[str, str] | None:
     """
-    Choose messages to send.
+    Try to create lock key.
 
-    Max emails -> maximum number of notifications per chat
-
-    :returns: list[msg_dict]
+    Return:
+        (lock_key, lock_token) if lock key created,
+        or
+        None if key already exists.
     """
+    lock_key = f"{key}_lock"
+    lock_token = str(uuid.uuid4())
+    acquired = redis_broker.set(lock_key, lock_token, nx=True, ex=ttl)
+    if not acquired:
+        return None
+    return lock_key, lock_token
+
+
+def lmove_entities(pending_key: str, processing_key: str, max_msgs=15) -> list[bytes]:
+    """
+    LMOVE entities from PENDING_KEY to PROCESSING_KEY.
+
+    max_msgs - maximum number of messages to keep. It means set limit msgs for worker
+    """
+    result = []
+    while len(result) < max_msgs:
+        msg_entity = redis_broker.lmove(pending_key, processing_key, "RIGHT", "LEFT")
+        if msg_entity is None:
+            break
+        result.append(msg_entity)
+    return result
+
+
+def unpack_msgs(msg_entities: list[bytes], max_emails: int) -> tuple[dict[bytes, dict], list[bytes]]:
+    """
+    Unpack raw_str MessagesFromWebhook
+
+    If count of emails from one chat > max_emails adds messages exceeding the limit to the remove entity.
+
+    :returns: (dict[bytes[raw_message], dict], list[bytes[remove_messages]])
+    """
+    messages = dict()
+    remove_messages = []
+
     viewed = dict()
-    msgs = []
-
-    msg_entity = redis_broker.rpop(msgs_key)
-    while msg_entity:
+    for msg_entity in msg_entities:
         new_chat, _, msg_data = msg_entity.decode().partition(";")
         message = MessageFromWebhook().unpack_str_msg(msg_data)
-        count = viewed.get(message["chat_id"], 0)
-        if count+1 > max_emails or message["read"]:
-            pass
+        chat_id = message["chat_id"]
+        count = viewed.get(chat_id, 0)
+
+        message["new_chat"] = new_chat == "new_chat=True" if count == 0 else False
+        if count + 1 > max_emails or message["read"]:
+            remove_messages.append(msg_entity)
         else:
-            message["new_chat"] = new_chat == "new_chat=True" if count == 0 else False
-            msgs.append(message)
-            viewed[message["chat_id"]] = count + 1
-        msg_entity = redis_broker.rpop(msgs_key)
-
-    return msgs
+            messages[msg_entity] = message
+            viewed[chat_id] = count + 1
+    return messages, remove_messages
 
 
-def send_manager(manager_id: int, manager_email: str, manager_key: str):
+def choose_messages(
+    msgs_key: str,
+    processing_key: str,
+    max_emails: int = 2,
+) -> tuple[list[dict], list[bytes]]:
+    """
+    Move all messages from pending queue to processing queue,
+    Fetches missing values from processing key
+
+    return (list[dict], list[values in processing_key])
+
+    Messages which exceeded max_emails are removed
+    """
+    messages: list[dict] = []
+    raw_messages: list[bytes] = []
+    remove_messages = []
+
+    processing_msgs = redis_broker.lrange(processing_key, 0, -1)
+    pending_msgs = lmove_entities(msgs_key, processing_key)
+
+    for i in [processing_msgs, pending_msgs]:
+        msgs, rm_msgs = unpack_msgs(i, max_emails)
+        for raw_message, message in msgs.items():
+            messages.append(message)
+            raw_messages.append(raw_message)
+        remove_messages.extend(rm_msgs)
+
+    with redis_broker.pipeline() as pipe:
+        [pipe.lrem(processing_key, 0, msg) for msg in remove_messages]
+        pipe.execute()
+    return messages, raw_messages
+
+
+def send_manager(manager_id: int, manager_email: str, manager_key: str, proc_key: str) -> tuple[list[bytes], list[bytes]]:
     """
     Send notification to manager
 
-    return failed messages wich down with SMTPError
+    return [Messages_in_processing_key, Failed_Messages]
+
+    Failed messages are those that failed with an SMTPException.
 
     :param manager_id:
     :param manager_email:
     :param manager_key: redis_list_key of messages to manager
-    :return: list[str[failed_msgs]]
+    :param proc_key: the key under which messages currently being processed are stored
+    :return: (list[str[msgs]], list[str[failed_msgs]])
     """
-    messages_data = create_msgsdata_for_email(manager_id, choose_messages(manager_key))
+    messages, raw_messages = choose_messages(manager_key, proc_key)
+    messages_data = load_and_extend_data_for_email(manager_id, messages)
     res_sending = send_notifications_on_email(
         manager_email,
         emails_data=[(i["client_id"], i["topic"], i["prev_email"]) for i in messages_data.values()],
@@ -89,7 +162,15 @@ def send_manager(manager_id: int, manager_email: str, manager_key: str):
         if isinstance(fail_type, smtplib.SMTPException):
             msg_str = MessageFromWebhook(msg).create_str()
             retries.append(f"new_chat={msg["new_chat"]};{msg_str}")
-    return retries
+    return raw_messages, retries
+
+
+def get_manager_messages(pending_key: str, processing_key: str) -> list[int]:
+    with redis_broker.pipeline() as pipe:
+        pipe.llen(pending_key)
+        pipe.llen(processing_key)
+        msgs = pipe.execute()
+    return msgs
 
 
 @celery.task(
@@ -98,28 +179,34 @@ def send_manager(manager_id: int, manager_email: str, manager_key: str):
     max_retries=8,
     default_retry_delay=8,
     retry_jitter=True,
-    # acks_late=True,; не терять смски при worker kill. сделать pending-messages,processing-messages(lmove/blmove) в redis
+    acks_late=True,
     reject_on_worker_lost=True,
 )
 def send_notification_task(self, manager: int, manager_email: str):
-    s_manager = str(manager)
-    lock_key = f"{manager}_lock"
-    lock_token = str(uuid.uuid4())
+    manager_key = str(manager)
+    processing_key = f"{manager}:processing"
 
-    if redis_broker.llen(s_manager) == 0:
-        logger.info(f"Messages for {manager}  already send")
+    msgs = get_manager_messages(manager_key, processing_key)
+    if sum(msgs) == 0:
+        logger.info(f"Messages for {manager} already sent")
         return
-    elif not redis_broker.set(lock_key, lock_token, nx=True, ex=60):
+
+    lock = create_lock_key(manager_key)
+    if lock is None:
         logger.info(f"Manager {manager} is locked, retrying later")
         raise self.retry()
+    lock_key, lock_token = lock
 
     try:
-        fails = send_manager(manager, manager_email, s_manager)
+        msgs_entity, fails = send_manager(manager, manager_email, manager_key, processing_key)
         if fails:
-            redis_broker.lpush(f"{s_manager}:retry", *fails)
+            redis_broker.lpush(f"{manager_key}:retry", *fails)
             notification_retry_task.apply_async((manager, manager_email), countdown=5)
+        with redis_broker.pipeline() as pipe:
+            [pipe.lrem(processing_key, 0, msg_entity) for msg_entity in msgs_entity]
+            pipe.execute()
     except Exception as e:
-        logger.error(repr(e), exc_info=True)
+        logger.error(f"SendNotf_Task {repr(e)}", exc_info=True)
     finally:
         release_manager_lock(lock_key, lock_token)
 
@@ -129,30 +216,64 @@ def send_notification_task(self, manager: int, manager_email: str):
     max_retries=3,
     default_retry_delay=8,
     retry_jitter=True,
-    # acks_late=True,; не терять смски при worker kill. сделать pending-messages,processing-messages(lmove/blmove) в redis
+    acks_late=True,
     reject_on_worker_lost=True,
 )
 def notification_retry_task(self, manager: int, manager_email: str):
     manager_key = f"{manager}:retry"
-    lock_key = f"{manager_key}_lock"
-    lock_token = str(uuid.uuid4())
+    processing_key = f"{manager_key}:processing"
 
-    if redis_broker.llen(manager_key) == 0:
+    msgs = get_manager_messages(manager_key, processing_key)
+    if sum(msgs) == 0:
         logger.info(f"Retries for {manager_key} already done")
         return
-    elif not redis_broker.set(lock_key, lock_token, nx=True, ex=60):
+
+    lock = create_lock_key(manager_key)
+    if lock is None:
         logger.info(f"Manager {manager_key} is locked, retrying later")
         raise self.retry()
+    lock_key, lock_token = lock
 
     try:
-        fails = send_manager(manager, manager_email, manager_key)
-        if fails:
-            if self.request.retries == self.max_retries - 1:
-                pass
-            else:
-                redis_broker.lpush(manager_key, *fails)
-                self.retry()
+        msgs_entity, fails = send_manager(manager, manager_email, manager_key, processing_key)
+        for msg in fails:
+            msgs_entity.remove(msg)
+        with redis_broker.pipeline() as pipe:
+            [pipe.lrem(processing_key, 0, msg_entity) for msg_entity in msgs_entity]
+            pipe.execute()
     except Exception as e:
-        logger.error(f"Retry_MsgTask {repr(e)}", exc_info=True)
+        logger.error(f"RetryMsg_Task {repr(e)}", exc_info=True)
+    else:
+        if fails and self.request.retries < self.max_retries:
+            raise self.retry()
+    finally:
+        release_manager_lock(lock_key, lock_token)
+
+
+@celery.task
+def create_mail_id_task():
+    ids_count = redis_broker.llen("mails_ids")
+    if ids_count >= 50:
+        return
+
+    create_key = "creating_mails_ids"
+    lock = create_lock_key(create_key)
+    if lock is None:
+        logger.info(f"Creating mails id is running")
+        return
+    lock_key, lock_token = lock
+
+    try:
+        cxt = get_context('spawn') if sys.platform == 'win32' else get_context('fork')
+        with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=cxt) as executor:
+            futures = [executor.submit(make_msgid, EMAIL_DOMAIN_NAME) for _ in range(100)]
+
+            for future in concurrent.futures.as_completed(futures):
+                if future.exception() is not None:
+                    continue
+                msg_id = future.result()
+                redis_broker.lpush("mails_ids", msg_id)
+    except Exception as e:
+        logger.error(f"CreateMsgsIds_Task {repr(e)}", exc_info=True)
     finally:
         release_manager_lock(lock_key, lock_token)

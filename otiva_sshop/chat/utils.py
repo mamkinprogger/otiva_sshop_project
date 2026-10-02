@@ -33,6 +33,7 @@ class MessageFromWebhook:
             item_id: int = None,
             text: str = None,
             read: int = None,
+            msg_id: str = None,
             ):
         """update fields if msg passed"""
         self.JOIN_CHAR = "~"
@@ -44,6 +45,7 @@ class MessageFromWebhook:
         self.item_id = item_id
         self.read = read
         self.text = text
+        self.msg_id = msg_id
         if msg:
             if not isinstance(msg, dict):
                 raise MessageFieldsException("msg must be a dict")
@@ -60,6 +62,7 @@ class MessageFromWebhook:
             self.sending_time = msg["created"]
             self.item_id = msg["item_id"]
             self.read = msg["read"]
+            self.msg_id = msg["id"]
             if msg["content"]:
                 self.text = msg["content"].get("text", None)
                 call = msg["content"].get("call", None)
@@ -93,6 +96,7 @@ class MessageFromWebhook:
             raise MessageFieldsException("The key required to create a message is missing")
 
         correct_msg = {
+            "id": self.msg_id,
             "client_id": self.client_id,
             "chat_id": self.chat_id,
             "item_id": self.item_id,
@@ -102,13 +106,14 @@ class MessageFromWebhook:
             "read": self.read,
         }
         if not all([
+            isinstance(self.msg_id, str),
             self.correct_positive_int_value(self.client_id),
-            self.correct_positive_int_value(self.sending_time),
-            self.correct_positive_int_value(self.item_id) if self.item_id else True,
-            self.correct_positive_int_value(self.read) if self.read else True,
             self.correct_chat_id(),
+            self.correct_positive_int_value(self.item_id) if self.item_id else True,
+            self.correct_positive_int_value(self.sending_time),
             self.correct_call(),
             isinstance(self.text, str) if self.text else True,
+            self.correct_positive_int_value(self.read) if self.read else True,
         ]):
             logger.error(f"Сообщение некорректно {correct_msg}")
             return False
@@ -275,7 +280,7 @@ class ShopEmail:
 
         return True
 
-    def create_mail(self, prev_mails: list[str] = None) -> MIMEMultipart:
+    def create_mail(self, prev_mails: list[str] = None, msg_id: str = None) -> MIMEMultipart:
         """Create email with MIME"""
         if not isinstance(self.subject, str):
             raise CreateMailException("subject is not a str")
@@ -287,7 +292,7 @@ class ShopEmail:
             raise InvalidMailFieldException("Head of email is invalid")
 
         msg = MIMEMultipart()
-        msg['Message-ID'] = make_msgid(EMAIL_DOMAIN_NAME)
+        msg['Message-ID'] = make_msgid(EMAIL_DOMAIN_NAME) if not msg_id else msg_id
         msg['From'] = self.from_email
         msg['To'] = self.to_email
         sbj = self.subject
@@ -322,7 +327,7 @@ class ShopEmail:
         timeout = 7
 
         results = []
-        for email in emails:
+        for email in emails: # можно как бы тут удалять msg_entity, которые в proc_key, чтобы точно минимизировать переотправку сообщений если воркер умер
             try:
                 with SMTPEmailSender(self.from_email, self.password, smtp_server, port, timeout) as sender:
                         sender.send(email)

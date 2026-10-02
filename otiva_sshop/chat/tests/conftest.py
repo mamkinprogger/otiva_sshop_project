@@ -14,7 +14,7 @@ def correct_message_factory():
             "item_id": random.randint(1, 1_000_000_000_000) if item_id else None,
             "content": {},
             "read": None if not read else int(time.time() + 1),
-
+            "id": "".join(random.choice(string.ascii_letters) for _ in range(30)),
         }
         if with_call:
             msg["content"] = {

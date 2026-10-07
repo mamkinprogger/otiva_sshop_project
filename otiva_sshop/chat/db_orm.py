@@ -1,4 +1,5 @@
 from django.db import IntegrityError
+from django.db.models import F
 
 from chat.models import ClientsChatAvito
 from users.models import Clients, ClientPermissionError
@@ -50,6 +51,7 @@ def orm_update_manager_load(
             pinned_manager_id=manager_id,
         )
         ClientsChatAvito.objects.get_or_create(chat_id=chat_id, client_member_id=client_id)
+        Clients.objects.filter(client_id=client_id).update(emails_count=F("emails_count") + 1)
 
         client_name = client.name.strip() if client.name else "Аноним"
         manager_data = client.pinned_manager
@@ -69,7 +71,6 @@ def orm_update_manager_load(
             manager_data.missed_calls += 1
             manager_data.missed_calls_total += 1
     manager_data.save()
-
 
     if get_emails:
         if just_added:

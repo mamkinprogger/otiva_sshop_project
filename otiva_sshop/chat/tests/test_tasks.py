@@ -7,7 +7,7 @@ from celery.exceptions import Retry
 
 import chat.tasks as tasks
 from chat.tasks import choose_messages, send_manager, unpack_msgs, send_notification_task, create_lock_key, \
-    release_manager_lock, notification_retry_task, create_mail_id_task
+    release_locking, notification_retry_task, create_mail_id_task
 from chat.tests.conftest import correct_message_factory
 from chat.utils import MessageFromWebhook
 from conftest import test_redis_broker
@@ -76,8 +76,8 @@ class TestSendManagerInt:
         )
 
         add_msg_for_manager(11111)
-
-        raw_messages, retries = send_manager(manager_id, "asd@.ru", manager_key, processing_key)
+        messages, raw_messages = choose_messages(manager_key, processing_key)
+        retries = send_manager(manager_id, "asd@.ru", messages)
 
         assert len(raw_messages) == 1
         assert len(retries) == 0
@@ -184,18 +184,12 @@ class TestChooseMessages:
 class TestSendManager:
     def test_success_one_sending(self, mocker):
         manager_id = 11111
-        manager_key = str(manager_id)
-        processing_key = f"{manager_id}:processing"
 
         msg = {
             "client_id": 334,
             "topic": "AvotTAK:Аноним",
             "prev_email": None
         }
-        choose_messages_mock = mocker.patch(
-            "chat.tasks.choose_messages",
-            return_value=[[msg], [b"msg_str"]]
-        )
         create_msgsdata_mock = mocker.patch(
             "chat.tasks.load_and_extend_data_for_email",
             return_value = {0: msg}
@@ -205,12 +199,12 @@ class TestSendManager:
             return_value=[[0, True]]
         )
 
-        raw_messages, retries = send_manager(manager_id, "asd@.ru", manager_key, processing_key)
+        messages, raw_messages = [[msg], [b"msg_str"]]
+        retries = send_manager(manager_id, "asd@.ru", messages)
 
         assert len(raw_messages) == 1
         assert len(retries) == 0
 
-        choose_messages_mock.assert_called_once()
         create_msgsdata_mock.assert_called_once()
         send_notifications_mock.assert_called_once_with(
             "asd@.ru",
@@ -221,8 +215,6 @@ class TestSendManager:
 
     def test_success_many_sending(self, mocker):
         manager_id = 11111
-        manager_key = str(manager_id)
-        processing_key = f"{manager_id}:processing"
 
         msgs = [{
             "client_id": 334 + i,
@@ -230,10 +222,6 @@ class TestSendManager:
             "prev_email": None
         } for i in range(3)]
 
-        mocker.patch(
-            "chat.tasks.choose_messages",
-            return_value=[[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
-        )
         mocker.patch(
             "chat.tasks.load_and_extend_data_for_email",
             return_value={n: msg for n, msg in enumerate(msgs)}
@@ -243,7 +231,8 @@ class TestSendManager:
             return_value=[[i, True] for i in range(len(msgs))]
         )
 
-        raw_messages, retries = send_manager(manager_id, "asd@.ru", manager_key, processing_key)
+        messages, raw_messages = [[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
+        retries = send_manager(manager_id, "asd@.ru", messages)
 
         assert len(retries) == 0
         assert len(raw_messages) == 3
@@ -260,10 +249,6 @@ class TestSendManager:
         }]
 
         mocker.patch(
-            "chat.tasks.choose_messages",
-            return_value=[[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
-        )
-        mocker.patch(
             "chat.tasks.load_and_extend_data_for_email",
             return_value={n: msg for n, msg in enumerate(msgs)}
         )
@@ -272,15 +257,14 @@ class TestSendManager:
             return_value=[[i, False, RuntimeError()] for i in range(len(msgs))]
         )
 
-        raw_messages, fails = send_manager(manager_id, "asd@.ru", manager_key, processing_key)
+        messages, raw_messages = [[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
+        retries = send_manager(manager_id, "asd@.ru", messages)
 
-        assert len(fails) == 0
+        assert len(retries) == 0
         assert len(raw_messages) == 1
 
     def test_fail_smtperr_sending(self, mocker, correct_message_factory):
         manager_id = 11111
-        manager_key = str(manager_id)
-        processing_key = f"{manager_id}:processing"
 
         msgs = [{
             "client_id": 333,
@@ -289,10 +273,6 @@ class TestSendManager:
             "new_chat": True,
         }]
 
-        mocker.patch(
-            "chat.tasks.choose_messages",
-            return_value=[[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
-        )
         mocker.patch(
             "chat.tasks.load_and_extend_data_for_email",
             return_value={n: msg for n, msg in enumerate(msgs)},
@@ -311,11 +291,12 @@ class TestSendManager:
             return_value=msg_str_mock,
         )
 
-        raw_messages, fails = send_manager(manager_id, "asd@.ru", manager_key, processing_key)
+        messages, raw_messages = [[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
+        retries = send_manager(manager_id, "asd@.ru", messages)
 
-        assert len(fails) == 1
+        assert len(retries) == 1
         assert len(raw_messages) == 1
-        assert fails[0] == f"new_chat={msgs[0]['new_chat']};str_message"
+        assert retries[0] == f"new_chat={msgs[0]['new_chat']};str_message"
         message_from_webhook_mock.assert_called_once_with(msgs[0])
 
 
@@ -386,11 +367,37 @@ class TestUnpackMessages:
         assert len(remove_entity) == 1
 
 
+class TestReleaseLocking:
+    def test_worker_running(self, pd_redis_broker):
+        manager_key = "11111"
+
+        create_lock_key(manager_key)
+        lock = create_lock_key(manager_key)
+
+        assert lock is None
+
+    def test_worker_freeze(self, pd_redis_broker):
+        manager_key = "11111"
+
+        # Worker A gets the lock.
+        lock_key, old_token = create_lock_key(manager_key)
+        # Worker A is processing the message.....
+        # Worker A's lock expires.
+        pd_redis_broker.delete(lock_key)
+
+        # Worker B starts processing the same manager
+        lock_key, new_token = create_lock_key(manager_key)
+
+        # Worker A thawed out
+        release_locking(lock_key, old_token)
+        assert pd_redis_broker.get(lock_key) == new_token.encode()
+
+
 class TestSendNotifTask:
     def test_successful_send(self, add_msg_for_manager, pd_redis_broker, mocker, logger_off):
         manager = 11111
-        msg = add_msg_for_manager(11111, proc_key=True)
-        mocker.patch("chat.tasks.send_manager", return_value=[[msg], []])
+        add_msg_for_manager(11111, proc_key=True)
+        mocker.patch("chat.tasks.send_manager", return_value=[])
 
         send_notification_task.run(manager, "asd@.ru")
 
@@ -403,7 +410,7 @@ class TestSendNotifTask:
     def test_failed_send(self, add_msg_for_manager, pd_redis_broker, mocker, logger_off):
         manager = 11111
         msg = add_msg_for_manager(11111, proc_key=True)
-        mocker.patch("chat.tasks.send_manager", return_value=[[msg], [msg]])
+        mocker.patch("chat.tasks.send_manager", return_value=[msg])
         mocker.patch("chat.tasks.notification_retry_task")
 
         send_notification_task.run(manager, "asd@.ru")
@@ -434,39 +441,13 @@ class TestSendNotifTask:
         logger_off.info.assert_called_once_with(f"Manager {manager} is locked, retrying later")
 
 
-class TestReleaseManagerLock:
-    def test_worker_running(self, pd_redis_broker):
-        manager_key = "11111"
-
-        create_lock_key(manager_key)
-        lock = create_lock_key(manager_key)
-
-        assert lock is None
-
-    def test_worker_freeze(self, pd_redis_broker):
-        manager_key = "11111"
-
-        # Worker A gets the lock.
-        lock_key, old_token = create_lock_key(manager_key)
-        # Worker A is processing the message.....
-        # Worker A's lock expires.
-        pd_redis_broker.delete(lock_key)
-
-        # Worker B starts processing the same manager
-        lock_key, new_token = create_lock_key(manager_key)
-
-        # Worker A thawed out
-        release_manager_lock(lock_key, old_token)
-        assert pd_redis_broker.get(lock_key) == new_token.encode()
-
-
 class TestNotifRetryTask:
     def test_successful_retry(self, add_msg_for_manager, pd_redis_broker, mocker, logger_off):
         manager = 11111
         manager_key = f"{manager}:retry"
 
-        msg = add_msg_for_manager(manager_key, proc_key=True)
-        mocker.patch("chat.tasks.send_manager", return_value=[[msg], []])
+        add_msg_for_manager(manager_key, proc_key=True)
+        mocker.patch("chat.tasks.send_manager", return_value=[])
 
         notification_retry_task.run(manager, "asd@.ru")
 
@@ -481,7 +462,7 @@ class TestNotifRetryTask:
         manager_key = f"{manager}:retry"
 
         msg = add_msg_for_manager(manager_key, proc_key=True)
-        mocker.patch("chat.tasks.send_manager", return_value=[[msg], [msg]])
+        mocker.patch("chat.tasks.send_manager", return_value=[msg])
 
         with pytest.raises(Retry):
             notification_retry_task.run(manager, "asd@.ru")
@@ -531,14 +512,15 @@ class TestCreateMailIdsTask:
 
     def test_successful_creating(self, mocker, pd_redis_broker, logger_off):
         mocker.patch("chat.tasks.create_lock_key", return_value=[b"lock", b"token"])
-        mocker.patch("chat.tasks.release_manager_lock")
+        mocker.patch("chat.tasks.release_locking")
 
         class FakeFuture:
             def __init__(self, msg_id):
                 self.msg_id = msg_id
             def result(self):
                 return self.msg_id
-            def exception(self):
+            @staticmethod
+            def exception():
                 return None
 
         msg_ids = [f"msg-{i}" for i in range(100)]

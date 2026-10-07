@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import re
 
 from django.http import HttpResponse, Http404, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
@@ -54,28 +56,58 @@ async def manager_response_lag(msg: MessageFromWebhook):
     manager, received_time = map(int, cached_chat.split(b":"))
     waiting_time = abs(msg.sending_time - received_time)//60 if received_time else 0
 
-    await redis.set(msg.chat_id, f"{manager}:0", ex=60 * 60 * 24 * 3)
-    if waiting_time:
-        await redis.lpush(f"{manager}:response_lag", waiting_time)
+    async with redis.pipeline(transaction=True) as pipe:
+        await pipe.set(msg.chat_id, f"{manager}:0", ex=60 * 60 * 24 * 3)
+        if waiting_time:
+            await pipe.lpush(f"{manager}:response_lag", waiting_time)
+        await pipe.execute()
+
+async def get_client_creating(pinned_manager: bytes | None, chat_id: str) -> bool:
+    if not pinned_manager:
+        return False
+
+    pend = pinned_manager
+    process = pinned_manager + ":processing".encode()
+
+    async with aredis_broker.pipeline() as pipe:
+        await pipe.lrange(pend, 0, -1)
+        await pipe.lrange(process, 0, -1)
+        res = await pipe.execute()
+
+    pending, processing = res
+    join_char = MessageFromWebhook().JOIN_CHAR
+    pattern = join_char + "chat_id:" + re.escape(chat_id) + join_char
+
+    for msg_entity in pending+processing:
+        *_, queued_msg = msg_entity.partition(b";")
+        if re.search(pattern, queued_msg.decode()):
+            return True
+    return False
 
 
 async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]):
     """Send email to the manager assigned to the client who sent the message"""
-    pinned_manager = await redis.get(msg.chat_id)
-    client = await orm_contact_info_manager_from_client(msg.client_id)
-    # if pinned_manager and not client: # check celery running_tasks, if client is creating don't open this if/else
-    #     raise ClientMessageError(f"Chat {msg.chat_id} with client is open, but the client does not exist")
+    pinned_manager, client = await asyncio.gather(
+        redis.get(msg.chat_id),
+        orm_contact_info_manager_from_client(msg.client_id)
+    )
+    client_creating = await get_client_creating(
+        pinned_manager.split(b":")[0] if pinned_manager else None,
+        msg.chat_id
+    )
+
+    if (pinned_manager and not client) and not client_creating:
+        raise ClientMessageError(f"Chat {msg.chat_id} with client is open, but the client does not exist")
 
     if pinned_manager:
-        # if client and client["manager_id"] is None: # check celery running_tasks, if client is creating don't open this if/else
-        #     raise ClientMessageError(f"A client without a manager cannot write to an existing chat.")
+        if (client and client["manager_id"] is None) and not client_creating:
+            raise ClientMessageError(f"A client without a manager cannot write to an existing chat.")
 
         pinned_manager, received_time = pinned_manager.split(b":")
         target_manager, manager_email = await assign_manager(**client, managers_load=managers) if client else \
                                         await assign_manager(managers_load=managers)
         received_time = received_time if int(received_time) else str(msg.sending_time).encode()
         new_chat = False
-
         if target_manager != pinned_manager:
             if client:
                 logger.error("Менеджер активного чата в redis != менеджеру client")
@@ -87,14 +119,17 @@ async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]
         received_time = str(msg.sending_time).encode()
         new_chat = True if not client or not client["manager_id"] else False
 
-    msg_to_queue = f"{new_chat=};{msg.create_str()}"
+    str_msg = msg.create_str()
+    msg_to_queue = f"{new_chat=};{str_msg}"
     await aredis_broker.lpush(target_manager, msg_to_queue)
 
     send_notification_task.delay(int(target_manager), manager_email.decode())
 
-    if new_chat:
-        await redis.hset("managers", target_manager, int(managers[target_manager]) + 1)
-    await redis.set(msg.chat_id, target_manager+b":"+received_time, ex=60 * 60 * 24 * 3)
+    async with redis.pipeline(transaction=True) as pipe:
+        if new_chat:
+            await pipe.hset("managers", target_manager, int(managers[target_manager]) + 1)
+        await pipe.set(msg.chat_id, target_manager+b":"+received_time, ex=60 * 60 * 24 * 3)
+        await pipe.execute()
 
 
 @csrf_exempt

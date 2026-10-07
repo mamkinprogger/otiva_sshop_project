@@ -10,10 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
@@ -181,6 +181,10 @@ LOGGING = {
             "format": "{levelname} {asctime} {message}",
             "style": "{",
         },
+        "no_level_simple": {
+            "format": "{asctime} {message}",
+            "style": "{",
+        },
     },
     "filters": {
         "require_debug_true": {
@@ -218,12 +222,21 @@ LOGGING = {
         "celery_file": {
             "level": LOG_LEVEL,
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": 'logs/chat_logs_file.log',
+            "filename": 'logs/celery_logs_file.log',
             "maxBytes": 5 * 1024 * 1024,
             "backupCount": 3,
             "filters": ["require_debug_false"],
             "formatter": "verbose"
         },
+        "shipping_file": {
+                    "level": LOG_LEVEL,
+                    "class": "logging.handlers.RotatingFileHandler",
+                    "filename": 'logs/shipping_logs_file.log',
+                    "maxBytes": 5 * 1024 * 1024,
+                    "backupCount": 3,
+                    "filters": ["require_debug_false"],
+                    "formatter": "no_level_simple"
+                },
     },
     'root': {
         'handlers': ['console', 'root_file'],
@@ -238,7 +251,11 @@ LOGGING = {
             "propagate": False,
         },
         "celery_logger": {
-            "handlers": ["console", "chat_file"],
+            "handlers": ["console", "celery_file"],
+            "propagate": False,
+        },
+        "celery_logger_shipping": {
+            "handlers": ["console", "shipping_file"],
             "propagate": False,
         }
     },

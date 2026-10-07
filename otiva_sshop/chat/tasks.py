@@ -2,6 +2,7 @@ import concurrent.futures
 import logging
 import smtplib
 import sys
+import time
 import uuid
 from email.utils import make_msgid
 from multiprocessing import get_context
@@ -13,9 +14,20 @@ from chat.notifications.email_sending import send_notifications_on_email, load_a
 from chat.utils import MessageFromWebhook
 
 logger = logging.getLogger("celery_logger")
+logger_shipping = logging.getLogger("celery_logger_shipping")
 
-# можно переписать на контекстный менеджер и везде где нужен lock_key делать это все в контекстовике
-def release_manager_lock(lock_key: str, lock_token: str) -> None:
+
+def get_send_shipping(start_time: float, celery_start_command: list[str]):
+    for i in celery_start_command:
+        if "--loglevel" in i:
+            level = i.split("=")[1].upper()
+            if level in ["WARNING", "ERROR"]:
+                logger_shipping.error(f"shipping took {time.perf_counter() - start_time} seconds")
+
+
+# можно переписать на контекстный_менеджер и везде где нужен lock_key делать это все в контекстовике
+# можно класс редиса сделать с такими 2мя методами например BrokerLock
+def release_locking(lock_key: str, lock_token: str) -> None:
     """
     Delete lock_key if lock_key value is lock_token
 
@@ -130,7 +142,7 @@ def choose_messages(
     return messages, raw_messages
 
 
-def send_manager(manager_id: int, manager_email: str, manager_key: str, proc_key: str) -> tuple[list[bytes], list[bytes]]:
+def send_manager(manager_id: int, manager_email: str, messages: list[dict]) -> list[bytes | None]:
     """
     Send notification to manager
 
@@ -138,13 +150,8 @@ def send_manager(manager_id: int, manager_email: str, manager_key: str, proc_key
 
     Failed messages are those that failed with an SMTPException.
 
-    :param manager_id:
-    :param manager_email:
-    :param manager_key: redis_list_key of messages to manager
-    :param proc_key: the key under which messages currently being processed are stored
     :return: (list[str[msgs]], list[str[failed_msgs]])
     """
-    messages, raw_messages = choose_messages(manager_key, proc_key)
     messages_data = load_and_extend_data_for_email(manager_id, messages)
     res_sending = send_notifications_on_email(
         manager_email,
@@ -162,9 +169,9 @@ def send_manager(manager_id: int, manager_email: str, manager_key: str, proc_key
         if isinstance(fail_type, smtplib.SMTPException):
             msg_str = MessageFromWebhook(msg).create_str()
             retries.append(f"new_chat={msg["new_chat"]};{msg_str}")
-    return raw_messages, retries
+    return retries
 
-
+# можно тоже перекинуть к RedisMyClass; и через *argv получать количество значений в ключах
 def get_manager_messages(pending_key: str, processing_key: str) -> list[int]:
     with redis_broker.pipeline() as pipe:
         pipe.llen(pending_key)
@@ -183,6 +190,7 @@ def get_manager_messages(pending_key: str, processing_key: str) -> list[int]:
     reject_on_worker_lost=True,
 )
 def send_notification_task(self, manager: int, manager_email: str):
+    start_task = time.perf_counter()
     manager_key = str(manager)
     processing_key = f"{manager}:processing"
 
@@ -198,17 +206,19 @@ def send_notification_task(self, manager: int, manager_email: str):
     lock_key, lock_token = lock
 
     try:
-        msgs_entity, fails = send_manager(manager, manager_email, manager_key, processing_key)
+        messages, raw_messages = choose_messages(manager_key, processing_key)
+        fails = send_manager(manager, manager_email, messages)
         if fails:
             redis_broker.lpush(f"{manager_key}:retry", *fails)
             notification_retry_task.apply_async((manager, manager_email), countdown=5)
         with redis_broker.pipeline() as pipe:
-            [pipe.lrem(processing_key, 0, msg_entity) for msg_entity in msgs_entity]
+            [pipe.lrem(processing_key, 0, msg_entity) for msg_entity in raw_messages]
             pipe.execute()
     except Exception as e:
         logger.error(f"SendNotf_Task {repr(e)}", exc_info=True)
     finally:
-        release_manager_lock(lock_key, lock_token)
+        release_locking(lock_key, lock_token)
+        get_send_shipping(start_task, sys.argv)
 
 
 @celery.task(
@@ -220,6 +230,7 @@ def send_notification_task(self, manager: int, manager_email: str):
     reject_on_worker_lost=True,
 )
 def notification_retry_task(self, manager: int, manager_email: str):
+    start_task = time.perf_counter()
     manager_key = f"{manager}:retry"
     processing_key = f"{manager_key}:processing"
 
@@ -235,11 +246,12 @@ def notification_retry_task(self, manager: int, manager_email: str):
     lock_key, lock_token = lock
 
     try:
-        msgs_entity, fails = send_manager(manager, manager_email, manager_key, processing_key)
+        messages, raw_messages = choose_messages(manager_key, processing_key)
+        fails = send_manager(manager, manager_email, messages)
         for msg in fails:
-            msgs_entity.remove(msg)
+            raw_messages.remove(msg)
         with redis_broker.pipeline() as pipe:
-            [pipe.lrem(processing_key, 0, msg_entity) for msg_entity in msgs_entity]
+            [pipe.lrem(processing_key, 0, msg_entity) for msg_entity in raw_messages]
             pipe.execute()
     except Exception as e:
         logger.error(f"RetryMsg_Task {repr(e)}", exc_info=True)
@@ -247,11 +259,13 @@ def notification_retry_task(self, manager: int, manager_email: str):
         if fails and self.request.retries < self.max_retries:
             raise self.retry()
     finally:
-        release_manager_lock(lock_key, lock_token)
+        release_locking(lock_key, lock_token)
+        get_send_shipping(start_task, sys.argv)
 
 
 @celery.task
 def create_mail_id_task():
+    start_task = time.perf_counter()
     ids_count = redis_broker.llen("mails_ids")
     if ids_count >= 50:
         return
@@ -276,4 +290,5 @@ def create_mail_id_task():
     except Exception as e:
         logger.error(f"CreateMsgsIds_Task {repr(e)}", exc_info=True)
     finally:
-        release_manager_lock(lock_key, lock_token)
+        release_locking(lock_key, lock_token)
+        get_send_shipping(start_task, sys.argv)

@@ -1,12 +1,17 @@
+from pprint import pformat
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from chat.utils import MessageFromWebhook
-from chat.views import assign_manager, manager_response_lag, identify_manager
+from chat.views import assign_manager, manager_response_lag, identify_manager, get_client_creating
 import chat.views as views
 from conftest import test_redis
 
+
+@pytest.fixture
+def logger_off(mocker):
+    mocker.patch("chat.views.logger")
 
 @pytest.fixture
 async def pd_redis(monkeypatch, test_redis):
@@ -199,16 +204,18 @@ class TestIdentifyManager:
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, None)
+        manager = 21111
 
         msg = MessageFromWebhook(correct_message_factory())
         managers = await pd_redis.hgetall("managers")
-        await pd_redis.set(msg.chat_id, f"21111:{msg.sending_time - 20}")
+        await pd_redis.set(msg.chat_id, f"{manager}:{msg.sending_time - 20}")
+        await pd_aredis_broker.lpush(manager, f"new_chat=False;{msg.create_str()}")
 
         await identify_manager(msg, managers)
 
         assert await pd_redis.hget("managers", 11111) == b"0"
-        assert await pd_redis.hget("managers", 21111) == b"0"
-        assert (await pd_aredis_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        assert await pd_redis.hget("managers", manager) == b"0"
+        assert (await pd_aredis_broker.lrange(manager, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
         assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time - 20}".encode()
 
     async def test_cached_chat(
@@ -273,23 +280,20 @@ class TestIdentifyManager:
         assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time}".encode()
         assert (await pd_aredis_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
-    async def test_clients_managers_conflict(self, monkeypatch, pd_redis, correct_message_factory):
+    async def test_clients_managers_conflict(self, monkeypatch, pd_redis, correct_message_factory, mocker):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": 21111, "manager_email": "a@a.ru"})
-        redis_mock = AsyncMock()
-        redis_mock.get.return_value = f"11111:1000000".encode()
+        mocker.patch("chat.views.get_client_creating", return_value=None)
         redis_broker_mock = AsyncMock()
-        monkeypatch.setattr(views, "redis", redis_mock)
         monkeypatch.setattr(views, "aredis_broker", redis_broker_mock)
 
-
         msg = MessageFromWebhook(correct_message_factory())
+        await pd_redis.set(msg.chat_id, "11111:1000000")
         managers = await pd_redis.hgetall("managers")
 
         with pytest.raises(views.ClientMessageError, match=r"!="):
             await identify_manager(msg, managers)
 
-        redis_mock.get.assert_awaited_once_with(msg.chat_id)
         redis_broker_mock.lpush.assert_not_awaited()
 
     async def test_existing_client_open_a_chat(
@@ -317,7 +321,8 @@ class TestIdentifyManager:
             monkeypatch, 
             pd_redis,
             pd_aredis_broker,
-            correct_message_factory
+            correct_message_factory,
+            logger_off
     ):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": None, "manager_email": None})
@@ -325,13 +330,72 @@ class TestIdentifyManager:
         msg = MessageFromWebhook(correct_message_factory())
         managers = await pd_redis.hgetall("managers")
         await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
+        await pd_aredis_broker.lpush("11111:processing", f"new_chat=False;{msg.create_str()}")
 
         await identify_manager(msg, managers)
 
         assert await pd_redis.hget("managers", 11111) == b"0"
         assert await pd_redis.hget("managers", 21111) == b"0"
-        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
         assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
+
+    async def test_chat_open_but_client_not_exists(self, monkeypatch, pd_redis, correct_message_factory):
+        self._celery_mock(monkeypatch)
+        self._client_mock(monkeypatch, None)
+
+        msg = MessageFromWebhook(correct_message_factory())
+        managers = await pd_redis.hgetall("managers")
+        await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time}")
+
+        with pytest.raises(views.ClientMessageError, match=r"client is open"):
+            await identify_manager(msg, managers)
+
+    async def test_client_with_no_manager_writing_in_existing_chat(self, monkeypatch, pd_redis, pd_aredis_broker, correct_message_factory):
+        self._celery_mock(monkeypatch)
+        self._client_mock(monkeypatch, {"manager_id": None, "manager_email": None})
+
+        msg = MessageFromWebhook(correct_message_factory())
+        managers = await pd_redis.hgetall("managers")
+        await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time}")
+
+        with pytest.raises(views.ClientMessageError, match=r"cannot write"):
+            await identify_manager(msg, managers)
+
+
+class TestGetClientCreating:
+    async def test_in_pending(self, pd_aredis_broker, correct_message_factory):
+        manager = b"11111"
+        msg = MessageFromWebhook(correct_message_factory())
+        str_msg = msg.create_str()
+        msg_to_queue = f"new_chat=True;{str_msg}"
+        await pd_aredis_broker.lpush(manager, msg_to_queue)
+
+        result = await get_client_creating(manager, msg.chat_id)
+
+        assert result is True
+
+    async def test_in_processing(self, pd_aredis_broker, correct_message_factory):
+        manager = "11111"
+        proc_key = f"{manager}:processing"
+        msg = MessageFromWebhook(correct_message_factory())
+        str_msg = msg.create_str()
+        msg_to_queue = f"new_chat=True;{str_msg}"
+        await pd_aredis_broker.lpush(proc_key, msg_to_queue)
+
+        result = await get_client_creating(manager.encode(), msg.chat_id)
+
+        assert result is True
+
+    async def test_not_in_queues(self, pd_aredis_broker, correct_message_factory):
+        manager = b"11111"
+        msg = MessageFromWebhook(correct_message_factory())
+        str_msg = msg.create_str()
+        msg_to_queue = f"new_chat=True;{str_msg}"
+        await pd_aredis_broker.lpush(manager, msg_to_queue)
+
+        msg2 = MessageFromWebhook(correct_message_factory())
+        result = await get_client_creating(manager, msg2.chat_id)
+
+        assert result is False
 
 
 class TestWebhook:

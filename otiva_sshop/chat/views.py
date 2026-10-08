@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import re
 
 from django.http import HttpResponse, Http404, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
@@ -75,12 +74,11 @@ async def get_client_creating(pinned_manager: bytes | None, chat_id: str) -> boo
         res = await pipe.execute()
 
     pending, processing = res
-    join_char = MessageFromWebhook().JOIN_CHAR
-    pattern = join_char + "chat_id:" + re.escape(chat_id) + join_char
+    unpacker = MessageFromWebhook()
 
     for msg_entity in pending+processing:
         *_, queued_msg = msg_entity.partition(b";")
-        if re.search(pattern, queued_msg.decode()):
+        if unpacker.unpack_str_msg(queued_msg.decode())["chat_id"] == chat_id:
             return True
     return False
 

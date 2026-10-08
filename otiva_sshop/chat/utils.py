@@ -125,17 +125,24 @@ class MessageFromWebhook:
     def unpack_str_msg(self, str_msg: str):
         """Unpack msg wich convert to str self.create_str"""
         message = dict()
-
+        text_field = []
         for field in str_msg.split(self.JOIN_CHAR):
             key, separator, value = field.partition(":")
+            if message.get(key, None):
+                continue
+
             if separator:
                 if key in ["client_id", "item_id", "sending_time", "read"]:
                     message[key] = int(value) if value not in ("", "None") else None
+                elif key == "text":
+                    if value in ("None", ""):
+                        continue
+                    text_field.append(value)
                 else:
                     message[key] = value if value not in ("", "None") else None
             else:
-                text_value = message.get("text", "")
-                message["text"] = text_value + self.JOIN_CHAR + field
+                text_field.append(field)
+        message["text"] = self.JOIN_CHAR.join(text_field) if text_field else None
         return message
 
     def __str__(self):

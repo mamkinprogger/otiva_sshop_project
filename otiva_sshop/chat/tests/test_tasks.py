@@ -6,8 +6,8 @@ import pytest
 from celery.exceptions import Retry
 
 import chat.tasks as tasks
-from chat.tasks import choose_messages, send_manager, unpack_msgs, send_notification_task, create_lock_key, \
-    release_locking, notification_retry_task, create_mail_id_task
+from chat.tasks import choose_messages, send_manager, unpack_msgs, send_notification_task, notification_retry_task, \
+    create_mail_id_task
 from chat.tests.conftest import correct_message_factory
 from chat.utils import MessageFromWebhook
 from conftest import test_redis_broker
@@ -367,32 +367,6 @@ class TestUnpackMessages:
         assert len(remove_entity) == 1
 
 
-class TestReleaseLocking:
-    def test_worker_running(self, pd_redis_broker):
-        manager_key = "11111"
-
-        create_lock_key(manager_key)
-        lock = create_lock_key(manager_key)
-
-        assert lock is None
-
-    def test_worker_freeze(self, pd_redis_broker):
-        manager_key = "11111"
-
-        # Worker A gets the lock.
-        lock_key, old_token = create_lock_key(manager_key)
-        # Worker A is processing the message.....
-        # Worker A's lock expires.
-        pd_redis_broker.delete(lock_key)
-
-        # Worker B starts processing the same manager
-        lock_key, new_token = create_lock_key(manager_key)
-
-        # Worker A thawed out
-        release_locking(lock_key, old_token)
-        assert pd_redis_broker.get(lock_key) == new_token.encode()
-
-
 class TestSendNotifTask:
     def test_successful_send(self, add_msg_for_manager, pd_redis_broker, mocker, logger_off):
         manager = 11111
@@ -434,7 +408,7 @@ class TestSendNotifTask:
         manager = 11111
 
         mocker.patch("chat.tasks.get_manager_messages", return_value=(0, 1))
-        mocker.patch("chat.tasks.create_lock_key", return_value=None)
+        mocker.patch("chat.tasks.RedisLocker.create_lock_key", return_value=None)
 
         with pytest.raises(Retry):
             send_notification_task.run(manager, "asd@.ru")
@@ -486,7 +460,7 @@ class TestNotifRetryTask:
         manager_key = f"{manager}:retry"
 
         mocker.patch("chat.tasks.get_manager_messages", return_value=(0, 1))
-        mocker.patch("chat.tasks.create_lock_key", return_value=None)
+        mocker.patch("chat.tasks.RedisLocker.create_lock_key", return_value=None)
 
         with pytest.raises(Retry):
             notification_retry_task.run(manager, "asd@.ru")
@@ -504,15 +478,15 @@ class TestCreateMailIdsTask:
         assert pd_redis_broker.llen(mails_key) == 51
 
     def test_creating_in_progress(self, pd_redis_broker, mocker, logger_off):
-        mocker.patch("chat.tasks.create_lock_key", return_value=None)
+        mocker.patch("chat.tasks.RedisLocker.create_lock_key", return_value=None)
 
         create_mail_id_task.run()
 
         logger_off.info.assert_called_once_with(f"Creating mails id is running")
 
     def test_successful_creating(self, mocker, pd_redis_broker, logger_off):
-        mocker.patch("chat.tasks.create_lock_key", return_value=[b"lock", b"token"])
-        mocker.patch("chat.tasks.release_locking")
+        mocker.patch("chat.tasks.RedisLocker.create_lock_key", return_value=[b"lock", b"token"])
+        mocker.patch("chat.tasks.RedisLocker.release_locking")
 
         class FakeFuture:
             def __init__(self, msg_id):

@@ -1,11 +1,10 @@
-from pprint import pformat
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import chat.views as views
 from chat.utils import MessageFromWebhook
 from chat.views import assign_manager, manager_response_lag, identify_manager, get_client_creating
-import chat.views as views
 from conftest import test_redis
 
 
@@ -393,6 +392,19 @@ class TestGetClientCreating:
         await pd_aredis_broker.lpush(manager, msg_to_queue)
 
         msg2 = MessageFromWebhook(correct_message_factory())
+        result = await get_client_creating(manager, msg2.chat_id)
+
+        assert result is False
+
+    async def test_chat_id_in_text(self, pd_aredis_broker, correct_message_factory):
+        manager = b"11111"
+        msg = MessageFromWebhook(correct_message_factory())
+        msg2 = MessageFromWebhook(correct_message_factory())
+
+        msg.text = f"~chat_id:{msg2.chat_id}~"
+        msg_to_queue = f"new_chat=True;{msg.create_str()}"
+        await pd_aredis_broker.lpush(manager, msg_to_queue)
+
         result = await get_client_creating(manager, msg2.chat_id)
 
         assert result is False

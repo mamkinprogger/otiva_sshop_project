@@ -3,12 +3,11 @@ import logging
 import smtplib
 import sys
 import time
-import uuid
 from email.utils import make_msgid
 from multiprocessing import get_context
 
 from app.misc.celery_misc import celery
-from app.misc.redis_misc import redis_broker
+from app.misc.redis_misc import redis_broker, RedisLocker
 from app.settings import EMAIL_DOMAIN_NAME
 from chat.notifications.email_sending import send_notifications_on_email, load_and_extend_data_for_email
 from chat.utils import MessageFromWebhook
@@ -23,48 +22,6 @@ def get_send_shipping(start_time: float, celery_start_command: list[str]):
             level = i.split("=")[1].upper()
             if level in ["WARNING", "ERROR"]:
                 logger_shipping.error(f"shipping took {time.perf_counter() - start_time} seconds")
-
-
-# можно переписать на контекстный_менеджер и везде где нужен lock_key делать это все в контекстовике
-# можно класс редиса сделать с такими 2мя методами например BrokerLock
-def release_locking(lock_key: str, lock_token: str) -> None:
-    """
-    Delete lock_key if lock_key value is lock_token
-
-    :param lock_key:
-    :param lock_token:
-    :return:
-    """
-    release_lock_script = """
-    if redis.call("GET", KEYS[1]) == ARGV[1] then
-        return redis.call("DEL", KEYS[1])
-    else
-        return 0
-    end
-    """
-    redis_broker.eval(
-        release_lock_script,
-        1,
-        lock_key,
-        lock_token,
-    )
-
-
-def create_lock_key(key: str, ttl=60) -> tuple[str, str] | None:
-    """
-    Try to create lock key.
-
-    Return:
-        (lock_key, lock_token) if lock key created,
-        or
-        None if key already exists.
-    """
-    lock_key = f"{key}_lock"
-    lock_token = str(uuid.uuid4())
-    acquired = redis_broker.set(lock_key, lock_token, nx=True, ex=ttl)
-    if not acquired:
-        return None
-    return lock_key, lock_token
 
 
 def lmove_entities(pending_key: str, processing_key: str, max_msgs=15) -> list[bytes]:
@@ -199,11 +156,11 @@ def send_notification_task(self, manager: int, manager_email: str):
         logger.info(f"Messages for {manager} already sent")
         return
 
-    lock = create_lock_key(manager_key)
+    locker = RedisLocker(redis_broker)
+    lock = locker.create_lock_key(manager_key)
     if lock is None:
         logger.info(f"Manager {manager} is locked, retrying later")
         raise self.retry()
-    lock_key, lock_token = lock
 
     try:
         messages, raw_messages = choose_messages(manager_key, processing_key)
@@ -217,7 +174,7 @@ def send_notification_task(self, manager: int, manager_email: str):
     except Exception as e:
         logger.error(f"SendNotf_Task {repr(e)}", exc_info=True)
     finally:
-        release_locking(lock_key, lock_token)
+        locker.release_locking(lock)
         get_send_shipping(start_task, sys.argv)
 
 
@@ -239,11 +196,11 @@ def notification_retry_task(self, manager: int, manager_email: str):
         logger.info(f"Retries for {manager_key} already done")
         return
 
-    lock = create_lock_key(manager_key)
+    locker = RedisLocker(redis_broker)
+    lock = locker.create_lock_key(manager_key)
     if lock is None:
         logger.info(f"Manager {manager_key} is locked, retrying later")
         raise self.retry()
-    lock_key, lock_token = lock
 
     try:
         messages, raw_messages = choose_messages(manager_key, processing_key)
@@ -259,23 +216,22 @@ def notification_retry_task(self, manager: int, manager_email: str):
         if fails and self.request.retries < self.max_retries:
             raise self.retry()
     finally:
-        release_locking(lock_key, lock_token)
+        locker.release_locking(lock)
         get_send_shipping(start_task, sys.argv)
 
 
 @celery.task
 def create_mail_id_task():
-    start_task = time.perf_counter()
     ids_count = redis_broker.llen("mails_ids")
     if ids_count >= 50:
         return
 
     create_key = "creating_mails_ids"
-    lock = create_lock_key(create_key)
+    locker = RedisLocker(redis_broker)
+    lock = locker.create_lock_key(create_key)
     if lock is None:
         logger.info(f"Creating mails id is running")
         return
-    lock_key, lock_token = lock
 
     try:
         cxt = get_context('spawn') if sys.platform == 'win32' else get_context('fork')
@@ -290,5 +246,4 @@ def create_mail_id_task():
     except Exception as e:
         logger.error(f"CreateMsgsIds_Task {repr(e)}", exc_info=True)
     finally:
-        release_locking(lock_key, lock_token)
-        get_send_shipping(start_task, sys.argv)
+        locker.release_locking(lock)

@@ -8,7 +8,7 @@ from chat.notifications.email_sending import (
     EmailNotification,
     EmailNotificationTypeError,
     EmailNotificationFieldError,
-    EmailNotificationNoData, load_and_extend_data_for_email, get_topic_and_prev_email, send_notifications_on_email
+    EmailNotificationNoData, load_and_extend_data_for_email, get_topic_and_prev_email, EmailNotificationError
 )
 from chat.utils import MessageFieldsException
 from users.models import ClientPermissionError
@@ -16,7 +16,8 @@ from users.models import ClientPermissionError
 
 @pytest.fixture
 async def logger_off(mocker):
-    mocker.patch("chat.notifications.email_sending.logger")
+    turn_off = mocker.patch("chat.notifications.email_sending.logger")
+    return turn_off
 
 
 @pytest.fixture
@@ -435,7 +436,7 @@ class TestGetTopicAndPrevEmails:
 
         assert result == (True, "НеОбъявление-chat-123:Аноним", "email2")
 
-        orm_get_or_create_client_from_his_msg.assert_called_once_with(10, 20, "chat-123")
+        orm_get_or_create_client_from_his_msg.assert_called_once_with(10, 20, "chat-123", 0)
         orm_update_manager_load.assert_called_once_with(10, "call", True)
         orm_get_avito_product.assert_not_called()
 
@@ -461,7 +462,7 @@ class TestGetTopicAndPrevEmails:
 
         assert result == (False, "iPhone 15-abc:Аноним", "previous@example.com")
 
-        orm_get_or_create_client_from_his_msg.assert_called_once_with(1, 2, "abc")
+        orm_get_or_create_client_from_his_msg.assert_called_once_with(1, 2, "abc", 0)
         orm_update_manager_load.assert_called_once_with(1, None, False)
         orm_get_avito_product.assert_called_once_with(12345)
 
@@ -513,6 +514,28 @@ class TestGetTopicAndPrevEmails:
         assert previous_email == "c"
         orm_update_manager_load.assert_called_once_with(100, "some-call", True)
 
+    def test_message_already_read(self, mocker):
+        mocker.patch(
+            "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
+            return_value=(False, "c", "Аноним"),
+        )
+        orm_get_avito_product_mock = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
+        orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
+
+        with pytest.raises(EmailNotificationError, match="already read"):
+            get_topic_and_prev_email(
+                manager_id=100,
+                client_id=200,
+                chat_id="chat-id",
+                call="some-call",
+                new_chat=True,
+                item_id=999,
+                read=1,
+            )
+
+        orm_update_manager_load.assert_called_once_with(100, "some-call", True)
+        orm_get_avito_product_mock.assert_not_called()
+
 
 @pytest.mark.usefixtures("logger_off")
 class TestLoadAndExtendDataForEmail:
@@ -532,6 +555,8 @@ class TestLoadAndExtendDataForEmail:
                 "call": "call-1",
                 "new_chat": True,
                 "item_id": 123,
+                "read": None,
+                "skipped_msgs": 0,
             },
             {
                 "client_id": 20,
@@ -539,6 +564,8 @@ class TestLoadAndExtendDataForEmail:
                 "call": None,
                 "new_chat": False,
                 "item_id": None,
+                "read": None,
+                "skipped_msgs": 0,
             },
         ]
 
@@ -553,6 +580,8 @@ class TestLoadAndExtendDataForEmail:
                 "item_id": 123,
                 "topic": "Product-111",
                 "prev_email": "email1",
+                "read": None,
+                "skipped_msgs": 0,
             },
             1: {
                 "client_id": 20,
@@ -562,12 +591,14 @@ class TestLoadAndExtendDataForEmail:
                 "item_id": None,
                 "topic": "НеОбъявление-222",
                 "prev_email": "email3",
+                "read": None,
+                "skipped_msgs": 0,
             },
         }
 
         assert get_topic_and_prev_email_mock.call_count == 2
-        get_topic_and_prev_email_mock.assert_any_call(999, 10, "111", "call-1", True, 123)
-        get_topic_and_prev_email_mock.assert_any_call(999, 20, "222", None, False, None)
+        get_topic_and_prev_email_mock.assert_any_call(999, 10, "111", "call-1", True, 123, None, 0)
+        get_topic_and_prev_email_mock.assert_any_call(999, 20, "222", None, False, None, None, 0)
 
     def test_fields_are_copied_from_input_messages(self, mocker):
         mocker.patch(
@@ -584,6 +615,8 @@ class TestLoadAndExtendDataForEmail:
                 "item_id": 123,
                 "subject": "Hello",
                 "sender": "user@example.com",
+                "read": None,
+                "skipped_msgs": 0,
             }
         ]
 
@@ -606,6 +639,8 @@ class TestLoadAndExtendDataForEmail:
             "chat_id": "chat",
             "call": None,
             "new_chat": False,
+            "read": None,
+            "skipped_msgs": 0,
             }]
 
         with pytest.raises(MessageFieldsException):
@@ -625,11 +660,36 @@ class TestLoadAndExtendDataForEmail:
                 "call": None,
                 "new_chat": False,
                 "item_id": None,
+                "read": None,
+                "skipped_msgs": 0,
             }
         ]
 
         result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
         assert result == {}
+
+    def test_read_message_is_removed(self, mocker, logger_off):
+        error = EmailNotificationError("Already read")
+        mocker.patch(
+            "chat.notifications.email_sending.get_topic_and_prev_email",
+            side_effect=error,
+        )
+
+        msgs = [
+            {
+                "client_id": 1,
+                "chat_id": "chat",
+                "call": None,
+                "new_chat": False,
+                "item_id": None,
+                "read": None,
+                "skipped_msgs": 0,
+            }
+        ]
+
+        result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
+        assert result == {}
+        logger_off.assert_not_called()
 
     def test_failed_message_does_not_affect_other_messages(self, mocker):
         error = ValueError("database error")
@@ -649,6 +709,8 @@ class TestLoadAndExtendDataForEmail:
                 "call": None,
                 "new_chat": False,
                 "item_id": None,
+                "read": None,
+                "skipped_msgs": 0,
             },
             {
                 "client_id": 2,
@@ -656,6 +718,8 @@ class TestLoadAndExtendDataForEmail:
                 "call": "call",
                 "new_chat": True,
                 "item_id": 456,
+                "read": None,
+                "skipped_msgs": 0,
             },
         ]
 
@@ -670,6 +734,8 @@ class TestLoadAndExtendDataForEmail:
                 "item_id": 456,
                 "topic": "Product-222",
                 "prev_email": "email@example.com",
+                "read": None,
+                "skipped_msgs": 0,
             }
         }
 
@@ -688,6 +754,8 @@ class TestLoadAndExtendDataForEmail:
                 "call": None,
                 "new_chat": True,
                 "item_id": None,
+                "read": None,
+                "skipped_msgs": 0,
             }
         ]
 
@@ -710,6 +778,8 @@ class TestLoadAndExtendDataForEmail:
                 "call": None,
                 "new_chat": False,
                 "item_id": None,
+                "read": None,
+                "skipped_msgs": 0,
             }
         ]
 

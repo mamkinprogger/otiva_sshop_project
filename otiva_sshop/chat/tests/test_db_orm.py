@@ -369,3 +369,22 @@ class TestGetOrCreateClientFromHisMsg:
         assert client.emails_count == 1
         assert client.previous_email == prev_emails
         assert result == (False, prev_emails, "Виталий")
+
+    def test_increase_message_count(self, db_manager_factory):
+        manager = db_manager_factory(manager_id=13)
+        client_id = 1
+        skipped_msgs = 3
+        chat_id = "ABC-chat"
+
+        result = orm_get_or_create_client_from_his_msg(
+            manager_id=manager.manager_id,
+            client_id=client_id,
+            chat_id=chat_id,
+            increase_count_msgs=skipped_msgs,
+            get_emails=False
+        )
+
+        client = Clients.objects.filter(client_id=client_id).get()
+        assert client.emails_count == 4
+        assert client.previous_email == ""
+        assert result == (True, "Аноним")

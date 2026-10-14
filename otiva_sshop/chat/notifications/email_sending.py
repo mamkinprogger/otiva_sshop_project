@@ -12,14 +12,16 @@ from users.models import ClientPermissionError
 
 logger = logging.getLogger("celery_logger")
 
-
-class EmailNotificationTypeError(TypeError):
+class EmailNotificationError(Exception):
     pass
 
-class EmailNotificationFieldError(KeyError):
+class EmailNotificationTypeError(EmailNotificationError, TypeError):
     pass
 
-class EmailNotificationNoData(RuntimeError):
+class EmailNotificationFieldError(EmailNotificationError, KeyError):
+    pass
+
+class EmailNotificationNoData(EmailNotificationError, RuntimeError):
     pass
 
 
@@ -185,13 +187,22 @@ def get_topic_and_prev_email(
         call: str | None,
         new_chat: bool,
         item_id: int | None,
-) -> tuple[bool, str, str]:
+        read: int | None = None,
+        skipped_msg:int = 0
+) -> tuple[bool, str, str]: # вызвать ошибку если read
     """
     Update manager load and get previous mail from client
     If item_id passed, check existing item_id
     """
-    just_added, previous_email, client_name = orm_get_or_create_client_from_his_msg(manager_id, client_id, chat_id)
+    just_added, previous_email, client_name = orm_get_or_create_client_from_his_msg(
+        manager_id,
+        client_id,
+        chat_id,
+        skipped_msg
+    )
     orm_update_manager_load(manager_id, call, new_chat)
+    if read:
+        raise EmailNotificationError("Message already read")
     product = "НеОбъявление"
     if item_id is not None:
         product = orm_get_avito_product(item_id)
@@ -218,7 +229,8 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
                     executor.submit(
                         get_topic_and_prev_email,
                         manager_id, message["client_id"], message["chat_id"],
-                        message["call"], message["new_chat"], message["item_id"]
+                        message["call"], message["new_chat"], message["item_id"],
+                        message["read"], message["skipped_msgs"]
                     )
                 ]
                 for sequence, message in messages.items()
@@ -228,10 +240,13 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
 
         for sequence, future in futures:
             exc = future.exception()
-            if exc is not None:
-                logger.error(repr(future.exception()))
-                if isinstance(exc, ClientPermissionError) and messages[sequence]["new_chat"] is True:
-                    sredis.hincrby("managers", str(manager_id), -1)
+            if exc:
+                if isinstance(exc, EmailNotificationError):
+                    pass
+                else:
+                    logger.error(repr(future.exception()))
+                    if isinstance(exc, ClientPermissionError) and messages[sequence]["new_chat"] is True:
+                        sredis.hincrby("managers", str(manager_id), -1)
                 messages.pop(sequence)
             else:
                 _, topic, prev_email = future.result()

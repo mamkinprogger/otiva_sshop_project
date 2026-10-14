@@ -57,12 +57,20 @@ def unpack_msgs(msg_entities: list[bytes], max_emails: int) -> tuple[dict[bytes,
         chat_id = message["chat_id"]
         count = viewed.get(chat_id, 0)
 
+        message["skipped_msgs"] = 0
         message["new_chat"] = new_chat == "new_chat=True" if count == 0 else False
-        if count + 1 > max_emails or message["read"]:
+        if count + 1 > max_emails:
             remove_messages.append(msg_entity)
         else:
             messages[msg_entity] = message
-            viewed[chat_id] = count + 1
+        viewed[chat_id] = count + 1
+
+    for chat in viewed:
+        count = viewed[chat]
+        for msg in messages.values():
+            if msg["chat_id"] == chat:
+                msg["skipped_msgs"] = count - max_emails if count > max_emails else 0
+                break
     return messages, remove_messages
 
 
@@ -93,9 +101,10 @@ def choose_messages(
             raw_messages.append(raw_message)
         remove_messages.extend(rm_msgs)
 
-    with redis_broker.pipeline() as pipe:
-        [pipe.lrem(processing_key, 0, msg) for msg in remove_messages]
-        pipe.execute()
+    if remove_messages:
+        with redis_broker.pipeline() as pipe:
+            [pipe.lrem(processing_key, 0, msg) for msg in remove_messages]
+            pipe.execute()
     return messages, raw_messages
 
 
@@ -239,7 +248,7 @@ def create_mail_id_task():
             futures = [executor.submit(make_msgid, EMAIL_DOMAIN_NAME) for _ in range(100)]
 
             for future in concurrent.futures.as_completed(futures):
-                if future.exception() is not None:
+                if future.exception():
                     continue
                 msg_id = future.result()
                 redis_broker.lpush("mails_ids", msg_id)

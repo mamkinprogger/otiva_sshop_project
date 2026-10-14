@@ -55,6 +55,7 @@ def orm_get_or_create_client_from_his_msg(
         manager_id: int,
         client_id: int,
         chat_id: str,
+        increase_count_msgs: int = 0,
         get_emails=True,
 ) -> tuple[bool, str | None, str] | tuple[bool, str]:
     """
@@ -71,6 +72,7 @@ def orm_get_or_create_client_from_his_msg(
 
     manager_exists = Managers.objects.filter(manager_id=manager_id).exists()
     manager_id = manager_id if manager_exists else None
+    increase = increase_count_msgs + 1
 
     try:
         with transaction.atomic():
@@ -78,7 +80,7 @@ def orm_get_or_create_client_from_his_msg(
                 client_id=client_id,
                 defaults={
                     "pinned_manager_id": manager_id,
-                    "emails_count": 1
+                    "emails_count": increase
                 }
             )
             ClientsChatAvito.objects.get_or_create(
@@ -96,7 +98,7 @@ def orm_get_or_create_client_from_his_msg(
         if client.previous_email and (email := client.previous_email.strip()):
             prev_email = email
 
-        updated_fields: dict[str, Any] = {"emails_count": F("emails_count") + 1}
+        updated_fields: dict[str, Any] = {"emails_count": F("emails_count") + increase}
         if not client.pinned_manager_id and manager_exists:
             updated_fields["pinned_manager_id"] = manager_id
         Clients.objects.filter(client_id=client_id).update(**updated_fields)

@@ -313,8 +313,10 @@ class TestUnpackMessages:
 
         assert len(messages) == 1
         assert len(remove_entity) == 0
+        message = messages.popitem()[1]
+        assert message.get("skipped_msgs") == 0
 
-        unpacked_msg =  messages.get(msgs[0])
+        unpacked_msg =  message
         for i in msg:
             assert unpacked_msg[i] == msg[i]
 
@@ -329,6 +331,8 @@ class TestUnpackMessages:
         assert [msgs.remove(i) for i in messages]
         assert not remove_entity
         assert not msgs
+        for msg in messages:
+            assert messages[msg]["skipped_msgs"] == 0
 
     def test_over_limit(self, add_msg_for_manager, pd_redis_broker):
         _ = [add_msg_for_manager(11111) for _ in range(5)]
@@ -340,6 +344,18 @@ class TestUnpackMessages:
         assert [msgs.remove(i) for i in messages]
         assert [msgs.remove(i) for i in remove_entity]
         assert not msgs
+
+        act_skipped = 0
+        have_skipped = 0
+        for msg in messages:
+            skipped = messages[msg]["skipped_msgs"]
+            if skipped != 0:
+                have_skipped += 1
+                act_skipped = skipped
+                continue
+            assert skipped == 0
+        assert have_skipped == 1
+        assert act_skipped == 3
 
     def test_new_chat_fields(self, add_msg_for_manager, pd_redis_broker):
         _ = [add_msg_for_manager(11111, new_chat=True) for _ in range(2)]
@@ -354,6 +370,8 @@ class TestUnpackMessages:
         assert True in params_new_chat
         assert False in params_new_chat
         assert len(params_new_chat) == 2
+        for msg in messages:
+            assert messages[msg]["skipped_msgs"] == 0
 
     def test_already_read_msg(self, add_msg_for_manager, pd_redis_broker, correct_message_factory):
         msg = correct_message_factory(read=True)
@@ -363,8 +381,8 @@ class TestUnpackMessages:
 
         messages, remove_entity = unpack_msgs(msgs, 2)
 
-        assert len(messages) == 0
-        assert len(remove_entity) == 1
+        assert len(messages) == 1
+        assert len(remove_entity) == 0
 
 
 class TestSendNotifTask:

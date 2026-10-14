@@ -16,7 +16,6 @@ async def test_redis():
         name="managers",
         mapping={i: 0 for i in managers_id},
     )
-
     await aredis.hset(
         name='emails_managers',
         mapping={i: f"email{i}@mail.ru" for i in managers_id}
@@ -26,6 +25,27 @@ async def test_redis():
     await aredis.flushdb()
     await aredis.aclose()
 
+
+@pytest.fixture
+def test_sredis():
+    sredis = Redis_sync.from_url(REDIS_TEST)
+    managers_id = [11111, 21111]
+
+    sredis.hset(
+        name="managers",
+        mapping={i: 0 for i in managers_id},
+    )
+    sredis.hset(
+        name='emails_managers',
+        mapping={i: f"email{i}@mail.ru" for i in managers_id}
+    )
+
+    yield sredis
+
+    sredis.flushdb()
+    sredis.close()
+
+
 @pytest.fixture
 def test_redis_broker():
     redis = Redis_sync.from_url(REDIS_TEST_BROKER)
@@ -33,7 +53,6 @@ def test_redis_broker():
     yield redis
     redis.flushdb()
     redis.close()
-
 
 
 @pytest.fixture

@@ -11,6 +11,7 @@ class ClientsChatAvito(TimeStampMixin):
         to=Clients,
         on_delete=models.CASCADE,
         to_field="client_id",
+        related_name="chats",
     )
 
     class Meta:

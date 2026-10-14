@@ -56,6 +56,7 @@ class Clients(TimeStampMixin):
         null=True,
         blank=True,
         to_field='manager_id',
+        related_name='clients',
     )
 
     class Meta:

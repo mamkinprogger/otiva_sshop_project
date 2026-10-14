@@ -3,19 +3,21 @@ from email.utils import make_msgid
 
 import pytest
 
+import chat.notifications.email_sending as email_sending
 from chat.notifications.email_sending import (
     EmailNotification,
     EmailNotificationTypeError,
     EmailNotificationFieldError,
-    EmailNotificationNoData, load_and_extend_data_for_email, get_topic_and_prev_email,
+    EmailNotificationNoData, load_and_extend_data_for_email, get_topic_and_prev_email, send_notifications_on_email
 )
 from chat.utils import MessageFieldsException
-import chat.notifications.email_sending as email_sending
+from users.models import ClientPermissionError
 
 
 @pytest.fixture
 async def logger_off(mocker):
     mocker.patch("chat.notifications.email_sending.logger")
+
 
 @pytest.fixture
 def pd_redis_broker(monkeypatch, test_redis_broker):
@@ -25,6 +27,17 @@ def pd_redis_broker(monkeypatch, test_redis_broker):
         test_redis_broker,
     )
     return test_redis_broker
+
+
+@pytest.fixture
+def pd_sredis(monkeypatch, test_sredis):
+    monkeypatch.setattr(
+        email_sending,
+        "sredis",
+        test_sredis,
+    )
+    return test_sredis
+
 
 @pytest.fixture
 def emails_data():
@@ -233,10 +246,53 @@ class TestUpdateClientsEmails:
             notification,
             "update_client_emails",
         )
-
         notification.update_clients_emails([("aaa", True)])
         update.assert_called_once_with(("aaa", True))
 
+    def test_success_updates_previous_emails_for_one_client(self, mocker):
+        emails_data = [(101, "topic-1", "11.aa"), (101, "topic-1", "00.aa")]
+        notification = EmailNotification(manager_email="amanager@u.ru", emails_data=emails_data)
+
+        notification.emails_data["sac.asd"] = notification.emails_data.pop(0)
+        notification.emails_data["sac.asd.second"] = notification.emails_data.pop(1)
+        notification.add_results_sending([("sac.asd", True, None), ("sac.asd.second", True, None)])
+        update_history = mocker.patch("chat.notifications.email_sending.orm_update_client_emails_history")
+
+        notification.update_clients_emails([("sac.asd", True), ("sac.asd.second", True)])
+
+        assert notification.emails_data["sac.asd"]["prev_email"] == "sac.asd"
+        assert notification.emails_data["sac.asd.second"]["prev_email"] == "sac.asd.second"
+        update_history.assert_called_once_with(101, "sac.asd.second")
+
+    def test_success_updates_previous_emails_for_many_client(self, notification, mocker):
+        notification.emails_data["sac.asd"] = notification.emails_data.pop(0)
+        notification.emails_data["sac.asd.second"] = notification.emails_data.pop(1)
+        notification.add_results_sending([("sac.asd", True, None), ("sac.asd.second", True, None)])
+        update_history = mocker.patch("chat.notifications.email_sending.orm_update_client_emails_history")
+
+        notification.update_clients_emails([("sac.asd", True), ("sac.asd.second", True)])
+
+        assert notification.emails_data["sac.asd"]["prev_email"] == "sac.asd"
+        assert notification.emails_data["sac.asd.second"]["prev_email"] == "sac.asd.second"
+        for i in ([101, "sac.asd"], [102, "sac.asd.second"]):
+            update_history.assert_any_call(*i)
+
+    def test_failed_results_ignored(self, mocker):
+        emails_data = [(101, "topic-1", "11.aa"), (101, "topic-1", "00.aa")]
+        notification = EmailNotification(manager_email="amanager@u.ru", emails_data=emails_data)
+
+        notification.emails_data["sac.asd"] = notification.emails_data.pop(0)
+        notification.emails_data["sac.asd.second"] = notification.emails_data.pop(1)
+        notification.add_results_sending([("sac.asd", True, None), ("sac.asd.second", False, RuntimeError("A vot tak"))])
+        update_history = mocker.patch("chat.notifications.email_sending.orm_update_client_emails_history")
+
+        notification.update_clients_emails([("sac.asd", True), ("sac.asd.second", False)])
+
+        assert notification.emails_data["sac.asd"]["prev_email"] == "sac.asd"
+        assert notification.emails_data["sac.asd.second"]["prev_email"] == "00.aa"
+        update_history.assert_called_once_with(101, "sac.asd")
+
+@pytest.mark.usefixtures("pd_redis_broker")
 class TestCreateEmailsList:
     @pytest.mark.parametrize("manager_email", [123, None])
     def test_manager_email_must_be_string(self, manager_email):
@@ -359,8 +415,107 @@ class TestCreateEmailsList:
         logger.error.assert_called_once()
 
 
+class TestGetTopicAndPrevEmails:
+    def test_without_item_id_uses_default_product(self, mocker):
+        orm_get_or_create_client_from_his_msg = mocker.patch(
+            "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
+            return_value=(True, "email2", "Аноним"),
+        )
+        orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
+        orm_get_avito_product = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
+
+        result = get_topic_and_prev_email(
+            manager_id=10,
+            client_id=20,
+            chat_id="chat-123",
+            call="call",
+            new_chat=True,
+            item_id=None,
+        )
+
+        assert result == (True, "НеОбъявление-chat-123:Аноним", "email2")
+
+        orm_get_or_create_client_from_his_msg.assert_called_once_with(10, 20, "chat-123")
+        orm_update_manager_load.assert_called_once_with(10, "call", True)
+        orm_get_avito_product.assert_not_called()
+
+    def test_with_item_id_uses_avito_product(self, mocker):
+        orm_get_or_create_client_from_his_msg = mocker.patch(
+            "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
+            return_value=(False, "previous@example.com", "Аноним"),
+        )
+        orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
+        orm_get_avito_product = mocker.patch(
+            "chat.notifications.email_sending.orm_get_avito_product",
+            return_value="iPhone 15",
+        )
+
+        result = get_topic_and_prev_email(
+            manager_id=1,
+            client_id=2,
+            chat_id="abc",
+            call=None,
+            new_chat=False,
+            item_id=12345,
+        )
+
+        assert result == (False, "iPhone 15-abc:Аноним", "previous@example.com")
+
+        orm_get_or_create_client_from_his_msg.assert_called_once_with(1, 2, "abc")
+        orm_update_manager_load.assert_called_once_with(1, None, False)
+        orm_get_avito_product.assert_called_once_with(12345)
+
+    def test_falsy_item_id_does_not_query_product(self, mocker):
+        mocker.patch(
+            "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
+            return_value=(True, None, "Аноним"),
+        )
+        orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
+        orm_get_avito_product = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
+
+        result = get_topic_and_prev_email(
+            manager_id=1,
+            client_id=2,
+            chat_id="chat",
+            call=None,
+            new_chat=False,
+            item_id=None,
+        )
+
+        assert result[1] == "НеОбъявление-chat:Аноним"
+        orm_get_avito_product.assert_not_called()
+        orm_update_manager_load.assert_called_once_with(1, None, False)
+
+    def test_update_manager_load_result_is_returned(self, mocker):
+        mocker.patch(
+            "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
+            return_value=(False, "c", "Аноним"),
+        )
+        orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
+        mocker.patch(
+            "chat.notifications.email_sending.orm_get_avito_product",
+            return_value="Product",
+        )
+
+        result = get_topic_and_prev_email(
+            manager_id=100,
+            client_id=200,
+            chat_id="chat-id",
+            call="some-call",
+            new_chat=True,
+            item_id=999,
+        )
+
+        just_added, topic, previous_email = result
+
+        assert just_added is False
+        assert topic == "Product-chat-id:Аноним"
+        assert previous_email == "c"
+        orm_update_manager_load.assert_called_once_with(100, "some-call", True)
+
+
 @pytest.mark.usefixtures("logger_off")
-class TestCreateMsgsdataForEmail:
+class TestLoadAndExtendDataForEmail:
     def test_adds_topic_and_previous_emails_to_each_message(self, mocker):
         get_topic_and_prev_email_mock = mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
@@ -518,6 +673,50 @@ class TestCreateMsgsdataForEmail:
             }
         }
 
+    def test_reduce_manager_load(self, mocker, pd_sredis):
+        error = ClientPermissionError("client is fake")
+        mocker.patch(
+            "chat.notifications.email_sending.get_topic_and_prev_email",
+            side_effect=error,
+        )
+        pd_sredis.hincrby("managers", "1", 1)
+
+        msgs = [
+            {
+                "client_id": 1,
+                "chat_id": "chat",
+                "call": None,
+                "new_chat": True,
+                "item_id": None,
+            }
+        ]
+
+        result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
+        assert result == {}
+        assert pd_sredis.hget("managers", "1") == b"0"
+
+    def test_not_reduce_manager_load(self, mocker, pd_sredis):
+        error = ClientPermissionError("client is fake")
+        mocker.patch(
+            "chat.notifications.email_sending.get_topic_and_prev_email",
+            side_effect=error,
+        )
+        pd_sredis.hincrby("managers", "1", 1)
+
+        msgs = [
+            {
+                "client_id": 1,
+                "chat_id": "chat",
+                "call": None,
+                "new_chat": False,
+                "item_id": None,
+            }
+        ]
+
+        result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
+        assert result == {}
+        assert pd_sredis.hget("managers", "1") == b"1"
+
     def test_empty_messages_returns_empty_dict(self, mocker):
         get_topic_and_prev_email_mock = mocker.patch("chat.notifications.email_sending.get_topic_and_prev_email")
 
@@ -528,94 +727,3 @@ class TestCreateMsgsdataForEmail:
 
         assert result == {}
         get_topic_and_prev_email_mock.assert_not_called()
-
-
-class TestGetTopicAndPrevEmails:
-    def test_without_item_id_uses_default_product(self, mocker):
-        orm_update_manager_load = mocker.patch(
-            "chat.notifications.email_sending.orm_update_manager_load",
-            return_value=(True, "email2", "Аноним"),
-        )
-        orm_get_avito_product = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
-
-        result = get_topic_and_prev_email(
-            manager_id=10,
-            client_id=20,
-            chat_id="chat-123",
-            call="call",
-            new_chat=True,
-            item_id=None,
-        )
-
-        assert result == (True, "НеОбъявление-chat-123:Аноним", "email2")
-
-        orm_update_manager_load.assert_called_once_with(10, 20, "chat-123", "call", True)
-        orm_get_avito_product.assert_not_called()
-
-    def test_with_item_id_uses_avito_product(self, mocker):
-        orm_update_manager_load = mocker.patch(
-            "chat.notifications.email_sending.orm_update_manager_load",
-            return_value=(False, "previous@example.com", "Аноним"),
-        )
-        orm_get_avito_product = mocker.patch(
-            "chat.notifications.email_sending.orm_get_avito_product",
-            return_value="iPhone 15",
-        )
-
-        result = get_topic_and_prev_email(
-            manager_id=1,
-            client_id=2,
-            chat_id="abc",
-            call=None,
-            new_chat=False,
-            item_id=12345,
-        )
-
-        assert result == (False, "iPhone 15-abc:Аноним", "previous@example.com")
-
-        orm_update_manager_load.assert_called_once_with(1, 2, "abc", None, False)
-        orm_get_avito_product.assert_called_once_with(12345)
-
-    def test_falsy_item_id_does_not_query_product(self, mocker):
-        mocker.patch(
-            "chat.notifications.email_sending.orm_update_manager_load",
-            return_value=(True, None, "Аноним"),
-        )
-        orm_get_avito_product = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
-
-        result = get_topic_and_prev_email(
-            manager_id=1,
-            client_id=2,
-            chat_id="chat",
-            call=None,
-            new_chat=False,
-            item_id=None,
-        )
-
-        assert result[1] == "НеОбъявление-chat:Аноним"
-        orm_get_avito_product.assert_not_called()
-
-    def test_update_manager_load_result_is_returned(self, mocker):
-        mocker.patch(
-            "chat.notifications.email_sending.orm_update_manager_load",
-            return_value=(False, "c", "Аноним"),
-        )
-        mocker.patch(
-            "chat.notifications.email_sending.orm_get_avito_product",
-            return_value="Product",
-        )
-
-        result = get_topic_and_prev_email(
-            manager_id=100,
-            client_id=200,
-            chat_id="chat-id",
-            call="some-call",
-            new_chat=True,
-            item_id=999,
-        )
-
-        just_added, topic, previous_email = result
-
-        assert just_added is False
-        assert topic == "Product-chat-id:Аноним"
-        assert previous_email == "c"

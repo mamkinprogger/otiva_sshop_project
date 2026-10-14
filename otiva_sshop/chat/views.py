@@ -35,7 +35,7 @@ async def assign_manager(
     if manager_id and not manager_email:
         raise RuntimeError("Cannot pass manager_id without manager_email")
     if not managers_load and not manager_id:
-        raise RuntimeError("Managers load not passed")
+        raise RuntimeError("Manager load not passed")
 
     if manager_id:
         target_manager = str(manager_id).encode()
@@ -123,9 +123,9 @@ async def identify_manager(msg: MessageFromWebhook, managers: dict[bytes, bytes]
 
     send_notification_task.delay(int(target_manager), manager_email.decode())
 
-    async with redis.pipeline(transaction=True) as pipe:
+    async with redis.pipeline() as pipe:
         if new_chat:
-            await pipe.hset("managers", target_manager, int(managers[target_manager]) + 1)
+            await pipe.hincrby("managers", target_manager, 1)
         await pipe.set(msg.chat_id, target_manager+b":"+received_time, ex=60 * 60 * 24 * 3)
         await pipe.execute()
 

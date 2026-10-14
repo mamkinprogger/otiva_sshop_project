@@ -1,13 +1,14 @@
-import logging
 import concurrent.futures
+import logging
 import threading
-from typing import Any
 from email.mime.multipart import MIMEMultipart
+from typing import Any
 
-from app.misc.redis_misc import redis_broker
-from chat.db_orm import orm_update_manager_load, orm_update_client_emails_history
+from app.misc.redis_misc import sredis, redis_broker
+from chat.db_orm import orm_get_or_create_client_from_his_msg, orm_update_client_emails_history, orm_update_manager_load
 from chat.utils import ShopEmail, MessageFieldsException
 from goods.db_orm import orm_get_avito_product
+from users.models import ClientPermissionError
 
 logger = logging.getLogger("celery_logger")
 
@@ -82,16 +83,19 @@ class EmailNotification:
             results.append(res)
         return results
 
+    def _get_mail_entity_after_sending(self, email_id: str):
+        try:
+            mail = self.emails_data[email_id]
+        except KeyError as err:
+            raise EmailNotificationFieldError(f"Not Notification {email_id} in self.emails_data") from err
+        return mail
+
     def update_client_emails(self, result: tuple[str, bool]) -> None:
         """
         :param result: (message_id, success)
         """
         email_id, success = result
-        try:
-            mail = self.emails_data[email_id]
-        except KeyError as err:
-            raise EmailNotificationFieldError(f"Not Notification {email_id} in self.emails_data") from err
-
+        mail = self._get_mail_entity_after_sending(email_id)
         if not success:
             return
         else:
@@ -100,20 +104,35 @@ class EmailNotification:
 
     def update_clients_emails(self, results: list[tuple[str, bool]]) -> None:
         """
+        Pass results in sending order.
+
+        Database update only the last message sent by the client.
+
         :param results: list[tuple[message_id, success]]
         """
-
         if len(results) == 1:
             self.update_client_emails(results[0])
             return
+
         threads = []
-        for result in results:
-            thread = threading.Thread(
-                target=self.update_client_emails,
-                args=(result,)
-            )
+        updated_clients = set()
+
+        for i in range(len(results)-1, -1, -1):
+            result = results[i]
+            email_id, success = result
+            mail = self._get_mail_entity_after_sending(email_id)
+            client_id = mail["client_id"]
+
+            if not success:
+                continue
+            elif client_id in updated_clients:
+                mail["prev_email"] = email_id
+                continue
+
+            thread = threading.Thread(target=self.update_client_emails, args=(result,))
             thread.start()
             threads.append(thread)
+            updated_clients.add(client_id)
 
         for thread in threads:
             thread.join()
@@ -171,7 +190,8 @@ def get_topic_and_prev_email(
     Update manager load and get previous mail from client
     If item_id passed, check existing item_id
     """
-    just_added, previous_email, client_name = orm_update_manager_load(manager_id, client_id, chat_id, call, new_chat)
+    just_added, previous_email, client_name = orm_get_or_create_client_from_his_msg(manager_id, client_id, chat_id)
+    orm_update_manager_load(manager_id, call, new_chat)
     product = "НеОбъявление"
     if item_id is not None:
         product = orm_get_avito_product(item_id)
@@ -207,9 +227,12 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
             raise MessageFieldsException(f"Message hasn't field {err}")
 
         for sequence, future in futures:
-            if future.exception() is not None:
-                messages.pop(sequence)
+            exc = future.exception()
+            if exc is not None:
                 logger.error(repr(future.exception()))
+                if isinstance(exc, ClientPermissionError) and messages[sequence]["new_chat"] is True:
+                    sredis.hincrby("managers", str(manager_id), -1)
+                messages.pop(sequence)
             else:
                 _, topic, prev_email = future.result()
                 messages[sequence]["topic"] = topic

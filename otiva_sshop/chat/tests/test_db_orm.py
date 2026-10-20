@@ -184,7 +184,11 @@ class TestGetOrCreateClientFromHisMsg:
         assert chat.chat_id == chat_id
         assert chat.client_member_id == client_id
 
-        assert result == (True, "Аноним")
+        assert result == {
+            "client_added": True,
+            "client_name": "Аноним",
+            "chat_added": True
+        }
 
     def test_client_exists_but_just_written_in_chat(self, db_manager_factory, db_client_factory):
         manager = db_manager_factory(manager_id=23)
@@ -204,7 +208,11 @@ class TestGetOrCreateClientFromHisMsg:
         chat = ClientsChatAvito.objects.filter(chat_id=chat_id, client_member_id=client.client_id).get()
         assert chat.chat_id == chat_id
         assert chat.client_member_id == client.client_id
-        assert result == (False, "Виталий")
+        assert result == {
+            "client_added": False,
+            "client_name": "Виталий",
+            "chat_added": True
+        }
 
     def test_client_open_second_chat(self, db_client_factory, db_manager_factory):
         manager = db_manager_factory(manager_id=23)
@@ -230,9 +238,13 @@ class TestGetOrCreateClientFromHisMsg:
         for chat in client_chats:
             assert chat.chat_id in [chat_id_1, chat_id_2]
             assert chat.client_member_id == client_id
-        assert result == (False, "Аноним")
+        assert result == {
+            "client_added": False,
+            "client_name": "Аноним",
+            "chat_added": True
+        }
 
-    def test_client_chatted_before_hist_prev_email_updated(self, db_manager_factory, db_client_factory):
+    def test_client_chatted_before_his_prev_email_updated(self, db_manager_factory, db_client_factory):
         manager = db_manager_factory(manager_id=23)
         client = db_client_factory(client_id=1, name="Виталий")
         chat_id = "ABC-chat"
@@ -254,7 +266,11 @@ class TestGetOrCreateClientFromHisMsg:
         assert len(client_chats) == 1
         assert client_chats[0].chat_id == chat_id
         assert client_chats[0].client_member_id == client.client_id
-        assert result == (False, "Виталий")
+        assert result == {
+            "client_added": False,
+            "client_name": "Виталий",
+            "chat_added": False
+        }
 
     def test_new_client_chatting_in_foreign_chat(self, db_client_factory, db_manager_factory):
         manager = db_manager_factory(manager_id=23)
@@ -303,7 +319,11 @@ class TestGetOrCreateClientFromHisMsg:
         client.refresh_from_db()
         assert client.pinned_manager_id is None
         assert client.emails_count == 1
-        assert result == (False, "Виталий")
+        assert result == {
+            "client_added": False,
+            "client_name": "Виталий",
+            "chat_added": True
+        }
 
     def test_manger_deleted_but_msg_from_new_client_already_in_processing_with_old_manager_id(self, db_client_factory):
         client_id = 1
@@ -319,7 +339,11 @@ class TestGetOrCreateClientFromHisMsg:
         client = Clients.objects.filter(client_id=client_id).get()
         assert client.pinned_manager_id is None
         assert client.emails_count == 1
-        assert result == (True, "Аноним")
+        assert result == {
+            "client_added": True,
+            "client_name": "Аноним",
+            "chat_added": True
+        }
 
     def test_get_emails_new_client(self, db_manager_factory):
         manager = db_manager_factory(manager_id=13)
@@ -335,7 +359,12 @@ class TestGetOrCreateClientFromHisMsg:
         client = Clients.objects.filter(client_id=client_id).get()
         assert client.emails_count == 1
         assert client.previous_email == ""
-        assert result == (True, None, "Аноним")
+        assert result == {
+            "client_added": True,
+            "client_name": "Аноним",
+            "prev_email": None,
+            "chat_added": True,
+        }
 
     def test_get_emails_old_client(self, db_manager_factory, db_client_factory):
         manager = db_manager_factory(manager_id=13)
@@ -351,7 +380,12 @@ class TestGetOrCreateClientFromHisMsg:
         client = Clients.objects.filter(client_id=client.client_id).get()
         assert client.emails_count == 1
         assert client.previous_email == ""
-        assert result == (False, None, "Виталий")
+        assert result == {
+            "client_added": False,
+            "client_name": "Виталий",
+            "prev_email": None,
+            "chat_added": True,
+        }
 
     def test_get_emails_already_chatted(self, db_manager_factory, db_client_factory):
         manager = db_manager_factory(manager_id=13)
@@ -368,7 +402,12 @@ class TestGetOrCreateClientFromHisMsg:
         client = Clients.objects.filter(client_id=client.client_id).get()
         assert client.emails_count == 1
         assert client.previous_email == prev_emails
-        assert result == (False, prev_emails, "Виталий")
+        assert result == {
+            "client_added": False,
+            "client_name": "Виталий",
+            "prev_email": prev_emails,
+            "chat_added": True,
+        }
 
     def test_increase_message_count(self, db_manager_factory):
         manager = db_manager_factory(manager_id=13)
@@ -387,4 +426,8 @@ class TestGetOrCreateClientFromHisMsg:
         client = Clients.objects.filter(client_id=client_id).get()
         assert client.emails_count == 4
         assert client.previous_email == ""
-        assert result == (True, "Аноним")
+        assert result == {
+            "client_added": True,
+            "client_name": "Аноним",
+            "chat_added": True,
+        }

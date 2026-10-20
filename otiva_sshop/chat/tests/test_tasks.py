@@ -55,6 +55,12 @@ def add_msg_for_manager(test_redis_broker, correct_message_factory):
     return add_msg
 
 
+@pytest.fixture
+def precreate_ids_off(mocker):
+    mocker.patch("chat.tasks.create_mail_id_task")
+
+
+@pytest.mark.usefixtures("precreate_ids_off")
 class TestSendManagerInt:
     def test_int_choose_messages(self, add_msg_for_manager, pd_redis_broker, mocker):
         manager_id = 11111
@@ -181,6 +187,7 @@ class TestChooseMessages:
         assert pd_redis_broker.llen(processing_key) == 5
 
 
+@pytest.mark.usefixtures("precreate_ids_off")
 class TestSendManager:
     def test_success_one_sending(self, mocker):
         manager_id = 11111
@@ -433,6 +440,7 @@ class TestSendNotifTask:
         logger_off.info.assert_called_once_with(f"Manager {manager} is locked, retrying later")
 
 
+@pytest.mark.usefixtures("precreate_ids_off")
 class TestNotifRetryTask:
     def test_successful_retry(self, add_msg_for_manager, pd_redis_broker, mocker, logger_off):
         manager = 11111

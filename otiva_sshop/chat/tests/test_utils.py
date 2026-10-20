@@ -18,7 +18,8 @@ def shop_email():
 
 @pytest.fixture
 async def logger_off(mocker):
-    mocker.patch("chat.utils.logger")
+    turned_off = mocker.patch("chat.utils.logger")
+    return turned_off
 
 
 class TestMessageFromWebhook:
@@ -152,6 +153,7 @@ class TestMessageFromWebhook:
         assert MessageFromWebhook().unpack_str_msg(msg_str) == msg
 
 
+@pytest.mark.usefixtures("logger_off")
 class TestSendEmail:
     @pytest.mark.slow
     def test_create_email(self):
@@ -227,7 +229,7 @@ class TestSMTPEmailSender:
         msg["Message-ID"] = "<test-message-id@example.com>"
         return msg
 
-    def test_connect(self, sender, mocker):
+    def test_connect(self, sender, mocker, logger_off):
         client = mocker.MagicMock()
         smtp_ssl_mock = mocker.patch(
             "chat.utils.smtplib.SMTP_SSL",
@@ -246,7 +248,7 @@ class TestSMTPEmailSender:
         )
         assert sender.client is client
 
-    def test_send_connects_if_client_is_none(self, sender, mail, mocker):
+    def test_send_connects_if_client_is_none(self, sender, mail, mocker, logger_off):
         client = mocker.MagicMock()
         mocker.patch(
             "chat.utils.smtplib.SMTP_SSL",
@@ -263,7 +265,7 @@ class TestSMTPEmailSender:
             mail.as_string(),
         )
 
-    def test_send_uses_existing_connection(self, sender, mail, mocker):
+    def test_send_uses_existing_connection(self, sender, mail, mocker, logger_off):
         client = mocker.MagicMock()
         sender.client = client
         connect_mock = mocker.patch.object(
@@ -317,12 +319,12 @@ class TestSMTPEmailSender:
             for record in caplog.records
         )
 
-    def test_close_without_client(self, sender):
+    def test_close_without_client(self, sender, logger_off):
         sender.client = None
         sender.close()
         assert sender.client is None
 
-    def test_close_quits_client(self, sender, mocker):
+    def test_close_quits_client(self, sender, mocker, logger_off):
         client = mocker.MagicMock()
         sender.client = client
 
@@ -331,7 +333,7 @@ class TestSMTPEmailSender:
         client.quit.assert_called_once()
         assert sender.client is None
 
-    def test_close_clears_client_even_if_quit_fails(self, sender, mocker):
+    def test_close_clears_client_even_if_quit_fails(self, sender, mocker, logger_off):
         client = mocker.MagicMock()
         client.quit.side_effect = RuntimeError("quit failed")
         sender.client = client
@@ -340,7 +342,7 @@ class TestSMTPEmailSender:
             sender.close()
         assert sender.client is None
 
-    def test_context_manager_connects_and_closes(self, sender, mocker):
+    def test_context_manager_connects_and_closes(self, sender, mocker, logger_off):
         connect_mock = mocker.patch.object(sender, "connect")
         close_mock = mocker.patch.object(sender, "close")
         with sender as result:
@@ -349,7 +351,7 @@ class TestSMTPEmailSender:
         connect_mock.assert_called_once()
         close_mock.assert_called_once()
 
-    def test_exit_returns_false(self, sender, mocker,):
+    def test_exit_returns_false(self, sender, mocker, logger_off):
         close_mock = mocker.patch.object(sender, "close")
 
         result = sender.__exit__(
@@ -599,8 +601,6 @@ class TestSendEmailFromYandex:
 
         sender.send.assert_called_once_with(mail)
         assert results == [(mail["Message-ID"], False, type_error)]
-
-
 
     def test_send_multiple_emails_with_success_and_failure(
             self,

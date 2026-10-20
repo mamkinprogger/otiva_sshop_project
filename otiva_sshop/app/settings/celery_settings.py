@@ -9,10 +9,12 @@ start_argv = sys.argv
 TESTING = 'test' in start_argv
 TESTING = TESTING or 'test_coverage' in start_argv or 'pytest' in sys.modules
 
+MIN_MAIL_ID_COUNT = 50
 
 CELERY_TASK_QUEUES = (
     Queue('chatting'),
     Queue("celery"),
+    Queue("make_emails_ids")
 )
 
 CELERY_TASK_ROUTES = {
@@ -25,6 +27,9 @@ CELERY_TASK_ROUTES = {
         'queue': 'chatting',
         'priority': 4,
     },
+    'chat.tasks.create_mail_id_task': {
+        'queue': 'make_emails_ids',
+    }
 }
 
 

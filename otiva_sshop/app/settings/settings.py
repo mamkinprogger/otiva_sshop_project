@@ -28,7 +28,7 @@ def read_secret(secret_name):
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv("DEBUG", False)
-
+DOCKER_START_APP = os.getenv("DOCKER_START_APP", "false") == "true"
 
 ROOT_EMAIL = os.getenv("ROOT_EMAIL")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
@@ -42,6 +42,9 @@ if os.getenv('ALLOWED_HOSTS'):
     ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS').split()
 else:
     ALLOWED_HOSTS = ["*"]
+
+if os.getenv('CSRF_TRUSTED_ORIGINS'):
+    CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS').split()
 
 # Application definition
 
@@ -96,9 +99,6 @@ WSGI_APPLICATION = 'app.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-
-DOCKER_START_APP = False
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -152,7 +152,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-if DEBUG:
+if DEBUG and not DOCKER_START_APP:
     STATICFILES_DIRS = [
         BASE_DIR / 'static'
         ]

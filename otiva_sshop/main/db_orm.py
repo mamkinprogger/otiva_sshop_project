@@ -35,6 +35,8 @@ async def orm_get_main_index_content(page_slug: str) -> dict:
         orm_get_regular_content(page_slug),
         MotivationBlocks.objects.filter(page__slug=page_slug).order_by("?").afirst()
     )
+    if not motivation_block.sticker:
+        motivation_block.sticker = ""
     page_data["motivation_block"] = motivation_block
     return page_data
 

@@ -7,13 +7,31 @@ services:
     container_name: django-app
     command: python -m uvicorn app.asgi:application --host 0.0.0.0
     restart: unless-stopped
-    ports:
-      - 127.0.0.1:8000:8000
+    expose:
+      - 8000
+    volumes:
+      - static_volume:/usr/src/otiva_sshop/static
     env_file:
       - ./otiva_sshop/.env
+    environment:
+      DOCKER_START_APP: true
     depends_on:
       - db
       - redis
+    networks:
+      - otiva_shop_network
+
+
+  nginx:
+    image: nginx:alpine-slim
+    container_name: nginx
+    volumes:
+        - ./conf.d:/etc/nginx/conf.d
+        - static_volume:/app/static
+    ports:
+      - 8000:80
+    depends_on:
+      - web
     networks:
       - otiva_shop_network
 
@@ -36,27 +54,47 @@ services:
     image: django-app-dev:1.0.0
     container_name: celery
     entrypoint: []
-    command: celery -A app.misc.celery worker --loglevel=info
+    command: celery -A app.misc.celery_misc worker --loglevel=info -Q chatting,celery
     restart: unless-stopped
     env_file:
       - ./otiva_sshop/.env
+    environment:
+      DOCKER_START_APP: true
     depends_on:
       - web
     networks:
       - otiva_shop_network
 
-#  celery-beat:
-#    image: django-app-dev:1.0.0
-#    container_name: celery-beat
-#    entrypoint: []
-#    command: celery -A app.misc.celery beat --loglevel=info
-#    restart: unless-stopped
-#    env_file:
-#      - ./otiva_sshop/.env
-#    depends_on:
-#      - web
-#    networks:
-#      - otiva_shop_network
+  celery-make-ids:
+    image: django-app-dev:1.0.0
+    container_name: celery-make-ids
+    entrypoint: [ ]
+    command: celery -A app.misc.celery_misc worker --loglevel=info  --pool=solo -Q make_emails_ids
+    restart: unless-stopped
+    env_file:
+      - ./otiva_sshop/.env
+    environment:
+      DOCKER_START_APP: true
+    depends_on:
+      - web
+    networks:
+      - otiva_shop_network
+
+
+  celery-beat:
+    image: django-app-dev:1.0.0
+    container_name: celery-beat
+    entrypoint: []
+    command: celery -A app.misc.celery_misc beat --loglevel=info
+    restart: unless-stopped
+    env_file:
+      - ./otiva_sshop/.env
+    environment:
+      DOCKER_START_APP: true
+    depends_on:
+      - web
+    networks:
+      - otiva_shop_network
 
   redis:
     image: redis:7.2-alpine
@@ -74,13 +112,26 @@ services:
   flower:
     image: django-app-dev:1.0.0
     container_name: flower
-    command: celery -A app.misc.celery flower
+    command: celery -A app.misc.celery_misc flower
     entrypoint: []
     restart: unless-stopped
     depends_on:
       - celery
+    environment:
+      DOCKER_START_APP: true
     ports:
       - "5555:5555"
+    networks:
+      - otiva_shop_network
+
+  redis-gui:
+    image: redis/redisinsight
+    container_name: redis-gui
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PASSWORD: otiva_shop_redispass
+    ports:
+      - 5540:5540
     networks:
       - otiva_shop_network
 
@@ -88,6 +139,7 @@ services:
 volumes:
   pg_data:
   redis_data:
+  static_volume:
 
 networks:
   otiva_shop_network:

@@ -10,7 +10,8 @@ from conftest import test_redis
 
 @pytest.fixture
 def logger_off(mocker):
-    mocker.patch("chat.views.logger")
+    turn_off = mocker.patch("chat.views.logger")
+    return turn_off
 
 @pytest.fixture
 async def pd_redis(monkeypatch, test_redis):
@@ -75,7 +76,7 @@ class TestAssignManager:
         redis_mock.hget.assert_not_awaited()
 
     @pytest.mark.parametrize("manger_id, manager_email, trace", [
-        (21111, "", r"manager_id without manager_email"),
+        (21111, "", r"without manager_email"),
         (0, "a@a.ru", r"load not passed"),
         (0, "", r"load not passed")
     ], ids=["manager_id without manager_email", "email without manager_id", "load not passed"])
@@ -279,7 +280,7 @@ class TestIdentifyManager:
         assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time}".encode()
         assert (await pd_aredis_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
-    async def test_clients_managers_conflict(self, monkeypatch, pd_redis, correct_message_factory, mocker):
+    async def test_clients_managers_conflict(self, monkeypatch, pd_redis, correct_message_factory, mocker, logger_off):
         self._celery_mock(monkeypatch)
         self._client_mock(monkeypatch, {"manager_id": 21111, "manager_email": "a@a.ru"})
         mocker.patch("chat.views.get_client_creating", return_value=None)
@@ -296,8 +297,8 @@ class TestIdentifyManager:
         redis_broker_mock.lpush.assert_not_awaited()
 
     async def test_existing_client_open_a_chat(
-            self, 
-            monkeypatch, 
+            self,
+            monkeypatch,
             pd_redis,
             pd_aredis_broker,
             correct_message_factory
@@ -317,7 +318,7 @@ class TestIdentifyManager:
 
     async def test_existing_client_chatting_while_his_manager_updated(
             self,
-            monkeypatch, 
+            monkeypatch,
             pd_redis,
             pd_aredis_broker,
             correct_message_factory,
@@ -416,7 +417,7 @@ class TestWebhook:
         return "http://localhost:8000/webhook/"
 
     @pytest.mark.parametrize("method", ["GET", "PUT", "PATCH", "DELETE"])
-    async def test_returns_404_for_non_post(self, async_client, method):
+    async def test_returns_404_for_non_post(self, async_client, method, logger_off):
         response = await getattr(async_client, method.lower())(self._get_url())
         assert response.status_code == 404
 

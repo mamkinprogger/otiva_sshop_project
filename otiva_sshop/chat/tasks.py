@@ -8,7 +8,7 @@ from multiprocessing import get_context
 
 from app.misc.celery_misc import celery
 from app.misc.redis_misc import redis_broker, RedisLocker
-from app.settings import EMAIL_DOMAIN_NAME
+from app.settings import EMAIL_DOMAIN_NAME, MIN_MAIL_ID_COUNT
 from chat.notifications.email_sending import send_notifications_on_email, load_and_extend_data_for_email
 from chat.utils import MessageFromWebhook
 
@@ -21,7 +21,9 @@ def get_send_shipping(start_time: float, celery_start_command: list[str]):
         if "--loglevel" in i:
             level = i.split("=")[1].upper()
             if level in ["WARNING", "ERROR"]:
-                logger_shipping.error(f"shipping took {time.perf_counter() - start_time} seconds")
+                time_ms = int(round(time.perf_counter() - start_time, 3) * 1000)
+                pretty_time = "{}.{:03d}".format(time_ms // 1000, time_ms % 1000)
+                logger_shipping.error(f"shipping took {pretty_time} seconds")
 
 
 def lmove_entities(pending_key: str, processing_key: str, max_msgs=15) -> list[bytes]:
@@ -119,6 +121,8 @@ def send_manager(manager_id: int, manager_email: str, messages: list[dict]) -> l
     :return: (list[str[msgs]], list[str[failed_msgs]])
     """
     messages_data = load_and_extend_data_for_email(manager_id, messages)
+
+    create_mail_id_task.delay() # prepare email_id
     res_sending = send_notifications_on_email(
         manager_email,
         emails_data=[(i["client_id"], i["topic"], i["prev_email"]) for i in messages_data.values()],
@@ -232,7 +236,7 @@ def notification_retry_task(self, manager: int, manager_email: str):
 @celery.task
 def create_mail_id_task():
     ids_count = redis_broker.llen("mails_ids")
-    if ids_count >= 50:
+    if ids_count >= MIN_MAIL_ID_COUNT:
         return
 
     create_key = "creating_mails_ids"
@@ -243,7 +247,7 @@ def create_mail_id_task():
         return
 
     try:
-        cxt = get_context('spawn') if sys.platform == 'win32' else get_context('fork')
+        cxt = get_context('spawn')
         with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=cxt) as executor:
             futures = [executor.submit(make_msgid, EMAIL_DOMAIN_NAME) for _ in range(100)]
 

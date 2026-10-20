@@ -185,29 +185,33 @@ def get_topic_and_prev_email(
         client_id: int,
         chat_id: str,
         call: str | None,
-        new_chat: bool,
         item_id: int | None,
         read: int | None = None,
         skipped_msg:int = 0
-) -> tuple[bool, str, str]: # вызвать ошибку если read
+) -> tuple[dict[str, bool], str, str | None]: # вызвать ошибку если read
     """
     Update manager load and get previous mail from client
     If item_id passed, check existing item_id
     """
-    just_added, previous_email, client_name = orm_get_or_create_client_from_his_msg(
+    client_db_data = orm_get_or_create_client_from_his_msg(
         manager_id,
         client_id,
         chat_id,
         skipped_msg
     )
-    orm_update_manager_load(manager_id, call, new_chat)
+    orm_update_manager_load(manager_id, call, client_db_data["client_added"])
     if read:
         raise EmailNotificationError("Message already read")
+
     product = "НеОбъявление"
     if item_id is not None:
         product = orm_get_avito_product(item_id)
-    topic = f"{product}-{chat_id}:{client_name}"
-    return just_added, topic, previous_email
+    topic = f"{product}-{chat_id}:{client_db_data["client_name"]}"
+    just_added = {
+        "client": client_db_data["client_added"],
+        "chat": client_db_data["chat_added"],
+    }
+    return just_added, topic, client_db_data["prev_email"]
 
 
 def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
@@ -229,8 +233,7 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
                     executor.submit(
                         get_topic_and_prev_email,
                         manager_id, message["client_id"], message["chat_id"],
-                        message["call"], message["new_chat"], message["item_id"],
-                        message["read"], message["skipped_msgs"]
+                        message["call"], message["item_id"], message["read"], message["skipped_msgs"]
                     )
                 ]
                 for sequence, message in messages.items()

@@ -57,14 +57,19 @@ def orm_get_or_create_client_from_his_msg(
         chat_id: str,
         increase_count_msgs: int = 0,
         get_emails=True,
-) -> tuple[bool, str | None, str] | tuple[bool, str]:
+) -> dict[str, str | bool]:
     """
     Checks whether the client can send messages from the passed chat -> creates ClientsChatAvito() if necessary.
     Updates the count of messages sent by the client.
 
     raise ClientPermissionError if client cant write to chat
 
-    return tuple[bool[client_just_added], prev_msg of client, client_name]
+    return dict[
+     "client_added": bool,
+     "client_name": str,
+     "chat_added": bool,
+     Optional["prev_email"]: str | None"]
+    ]
     """
     client_name = "Аноним"
     prev_email = None
@@ -83,7 +88,7 @@ def orm_get_or_create_client_from_his_msg(
                     "emails_count": increase
                 }
             )
-            ClientsChatAvito.objects.get_or_create(
+            chat, chat_just_added = ClientsChatAvito.objects.get_or_create(
                 chat_id=chat_id,
                 client_member_id=client_id
             )
@@ -103,4 +108,12 @@ def orm_get_or_create_client_from_his_msg(
             updated_fields["pinned_manager_id"] = manager_id
         Clients.objects.filter(client_id=client_id).update(**updated_fields)
 
-    return (just_added, prev_email, client_name) if get_emails else (just_added, client_name)
+    result = {
+        "client_added": just_added,
+        "client_name": client_name,
+        "chat_added": chat_just_added
+    }
+    if get_emails:
+        result["prev_email"] = prev_email
+
+    return result

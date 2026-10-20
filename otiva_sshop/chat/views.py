@@ -33,9 +33,9 @@ async def assign_manager(
 
     """
     if manager_id and not manager_email:
-        raise RuntimeError("Cannot pass manager_id without manager_email")
+        raise RuntimeError(f"Cannot pass manager_id:{manager_id} without manager_email")
     if not managers_load and not manager_id:
-        raise RuntimeError("Manager load not passed")
+        raise RuntimeError(f"Manager:{manager_id} load not passed")
 
     if manager_id:
         target_manager = str(manager_id).encode()
@@ -43,7 +43,8 @@ async def assign_manager(
     else:
         target_manager = min(managers_load, key=lambda x: int(managers_load[x]))
         manager_email = await redis.hget("emails_managers", target_manager)
-
+        if not manager_email:
+            raise RuntimeError(f"Manager:{target_manager} dont have email")
     return target_manager, manager_email
 
 
@@ -140,9 +141,13 @@ async def webhook(request: HttpRequest):
 
     try:
         message_data = json.loads(request.body)
+        managers = await redis.hgetall("managers")
+
         if message_data["payload"]["type"] != "message" or not message_data["payload"]["value"]:
             return HttpResponse()
-        managers = await redis.hgetall("managers")
+        elif not managers:
+            return HttpResponse()
+
         message = MessageFromWebhook(message_data["payload"]["value"])
         sender = str(message.client_id).encode()
 
@@ -150,12 +155,20 @@ async def webhook(request: HttpRequest):
             await manager_response_lag(message)
         else:
             await identify_manager(message, managers)
-
     except MessageFieldsException as e:
         logger.error(f"Не удалось обработать сообщение: {e}")
     except ClientMessageError as e:
         if "!=" not in e.args[0]:
             logger.warning(f"Нелогичная ошибка: {repr(e)}")
+    except RuntimeError as e:
+        output = e.args[0]
+        if e.args[0] in ["Cannot pass manager_id", "load not passed", "dont have email"]:
+            logger.error(f"Ошибка с данными менеджера: {output}")
+        else:
+            logger.error(
+                f"Не удалось положить сообщение от webhook в очередь Непредвиденная ошибка: {e}",
+                exc_info=True
+            )
     except (KeyError, TypeError) as e:
         logger.error(f"Не удалось положить сообщение от webhook в очередь {repr(e)}")
         logger.error(f"\nОбъект сообщения\n"

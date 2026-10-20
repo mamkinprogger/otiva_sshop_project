@@ -420,7 +420,12 @@ class TestGetTopicAndPrevEmails:
     def test_without_item_id_uses_default_product(self, mocker):
         orm_get_or_create_client_from_his_msg = mocker.patch(
             "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
-            return_value=(True, "email2", "Аноним"),
+            return_value={
+                "client_added": True,
+                "client_name": "Аноним",
+                "prev_email": "email2",
+                "chat_added": True
+            },
         )
         orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
         orm_get_avito_product = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
@@ -430,11 +435,10 @@ class TestGetTopicAndPrevEmails:
             client_id=20,
             chat_id="chat-123",
             call="call",
-            new_chat=True,
             item_id=None,
         )
 
-        assert result == (True, "НеОбъявление-chat-123:Аноним", "email2")
+        assert result == ({"client": True, "chat": True}, "НеОбъявление-chat-123:Аноним", "email2")
 
         orm_get_or_create_client_from_his_msg.assert_called_once_with(10, 20, "chat-123", 0)
         orm_update_manager_load.assert_called_once_with(10, "call", True)
@@ -443,7 +447,12 @@ class TestGetTopicAndPrevEmails:
     def test_with_item_id_uses_avito_product(self, mocker):
         orm_get_or_create_client_from_his_msg = mocker.patch(
             "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
-            return_value=(False, "previous@example.com", "Аноним"),
+            return_value={
+                "client_added": False,
+                "client_name": "Аноним",
+                "prev_email": "previous@example.com",
+                "chat_added": False
+            },
         )
         orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
         orm_get_avito_product = mocker.patch(
@@ -456,11 +465,10 @@ class TestGetTopicAndPrevEmails:
             client_id=2,
             chat_id="abc",
             call=None,
-            new_chat=False,
             item_id=12345,
         )
 
-        assert result == (False, "iPhone 15-abc:Аноним", "previous@example.com")
+        assert result == ({"client": False, "chat": False}, "iPhone 15-abc:Аноним", "previous@example.com")
 
         orm_get_or_create_client_from_his_msg.assert_called_once_with(1, 2, "abc", 0)
         orm_update_manager_load.assert_called_once_with(1, None, False)
@@ -469,7 +477,12 @@ class TestGetTopicAndPrevEmails:
     def test_falsy_item_id_does_not_query_product(self, mocker):
         mocker.patch(
             "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
-            return_value=(True, None, "Аноним"),
+            return_value={
+                "client_added": False,
+                "client_name": "Аноним",
+                "prev_email": "previous@example.com",
+                "chat_added": False
+            },
         )
         orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
         orm_get_avito_product = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
@@ -479,7 +492,6 @@ class TestGetTopicAndPrevEmails:
             client_id=2,
             chat_id="chat",
             call=None,
-            new_chat=False,
             item_id=None,
         )
 
@@ -490,7 +502,12 @@ class TestGetTopicAndPrevEmails:
     def test_update_manager_load_result_is_returned(self, mocker):
         mocker.patch(
             "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
-            return_value=(False, "c", "Аноним"),
+            return_value={
+                "client_added": False,
+                "client_name": "Аноним",
+                "prev_email": "c",
+                "chat_added": True
+            },
         )
         orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
         mocker.patch(
@@ -503,21 +520,56 @@ class TestGetTopicAndPrevEmails:
             client_id=200,
             chat_id="chat-id",
             call="some-call",
-            new_chat=True,
             item_id=999,
         )
 
         just_added, topic, previous_email = result
 
-        assert just_added is False
+        assert just_added["client"] is False
         assert topic == "Product-chat-id:Аноним"
         assert previous_email == "c"
-        orm_update_manager_load.assert_called_once_with(100, "some-call", True)
+        orm_update_manager_load.assert_called_once_with(100, "some-call", False)
+
+    def test_chat_already_added_previous_worker(self, mocker):
+        mocker.patch(
+            "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
+            return_value={
+                "client_added": False,
+                "client_name": "Аноним",
+                "prev_email": "c",
+                "chat_added": False
+            },
+        )
+        orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
+        mocker.patch(
+            "chat.notifications.email_sending.orm_get_avito_product",
+            return_value="Product",
+        )
+
+        result = get_topic_and_prev_email(
+            manager_id=100,
+            client_id=200,
+            chat_id="chat-id",
+            call="some-call",
+            item_id=999,
+        )
+
+        just_added, topic, previous_email = result
+
+        assert just_added["client"] is False
+        assert topic == "Product-chat-id:Аноним"
+        assert previous_email == "c"
+        orm_update_manager_load.assert_called_once_with(100, "some-call", False)
 
     def test_message_already_read(self, mocker):
         mocker.patch(
             "chat.notifications.email_sending.orm_get_or_create_client_from_his_msg",
-            return_value=(False, "c", "Аноним"),
+            return_value={
+                "client_added": False,
+                "client_name": "Аноним",
+                "prev_email": "c",
+                "chat_added": True
+            },
         )
         orm_get_avito_product_mock = mocker.patch("chat.notifications.email_sending.orm_get_avito_product")
         orm_update_manager_load = mocker.patch("chat.notifications.email_sending.orm_update_manager_load")
@@ -528,23 +580,22 @@ class TestGetTopicAndPrevEmails:
                 client_id=200,
                 chat_id="chat-id",
                 call="some-call",
-                new_chat=True,
                 item_id=999,
                 read=1,
             )
 
-        orm_update_manager_load.assert_called_once_with(100, "some-call", True)
+        orm_update_manager_load.assert_called_once_with(100, "some-call", False)
         orm_get_avito_product_mock.assert_not_called()
 
 
 @pytest.mark.usefixtures("logger_off")
 class TestLoadAndExtendDataForEmail:
-    def test_adds_topic_and_previous_emails_to_each_message(self, mocker):
+    def test_adds_topic_and_previous_emails_to_each_message(self, mocker, pd_sredis):
         get_topic_and_prev_email_mock = mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
             side_effect=[
-                (True, "Product-111", "email1"),
-                (False, "НеОбъявление-222", "email3"),
+                ({"client": True, "chat": True}, "Product-111", "email1"),
+                ({"client": False, "chat": False}, "НеОбъявление-222", "email3"),
             ],
         )
 
@@ -597,13 +648,13 @@ class TestLoadAndExtendDataForEmail:
         }
 
         assert get_topic_and_prev_email_mock.call_count == 2
-        get_topic_and_prev_email_mock.assert_any_call(999, 10, "111", "call-1", True, 123, None, 0)
-        get_topic_and_prev_email_mock.assert_any_call(999, 20, "222", None, False, None, None, 0)
+        get_topic_and_prev_email_mock.assert_any_call(999, 10, "111", "call-1", 123, None, 0)
+        get_topic_and_prev_email_mock.assert_any_call(999, 20, "222", None, None, None, 0)
 
-    def test_fields_are_copied_from_input_messages(self, mocker):
+    def test_fields_are_copied_from_input_messages(self, mocker, pd_sredis):
         mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
-            return_value=(True, "Product-chat", None),
+            return_value=({"client": True, "chat": True}, "Product-chat", None),
         )
 
         msgs = [
@@ -628,10 +679,10 @@ class TestLoadAndExtendDataForEmail:
         assert result[0]["topic"] == "Product-chat"
         assert result[0]["prev_email"] is None
 
-    def test_missing_field_make_msg(self, mocker):
+    def test_missing_field_make_msg(self, mocker, pd_sredis):
         mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
-            return_value=(True, "topic", []),
+            return_value=({"client": True, "chat": False}, "topic", None),
         )
 
         msgs = [{
@@ -646,7 +697,7 @@ class TestLoadAndExtendDataForEmail:
         with pytest.raises(MessageFieldsException):
             load_and_extend_data_for_email(manager_id=1, msgs=msgs)
 
-    def test_failed_message_is_removed(self, mocker):
+    def test_failed_message_is_removed(self, mocker, pd_sredis):
         error = ValueError("val error")
         mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
@@ -668,7 +719,7 @@ class TestLoadAndExtendDataForEmail:
         result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
         assert result == {}
 
-    def test_read_message_is_removed(self, mocker, logger_off):
+    def test_read_message_is_removed(self, mocker, logger_off, pd_sredis):
         error = EmailNotificationError("Already read")
         mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
@@ -691,14 +742,14 @@ class TestLoadAndExtendDataForEmail:
         assert result == {}
         logger_off.assert_not_called()
 
-    def test_failed_message_does_not_affect_other_messages(self, mocker):
+    def test_failed_message_does_not_affect_other_messages(self, mocker, pd_sredis):
         error = ValueError("database error")
 
         mocker.patch(
             "chat.notifications.email_sending.get_topic_and_prev_email",
             side_effect=[
                 error,
-                (True, "Product-222", "email@example.com"),
+                ({"client": True, "chat": True}, "Product-222", "email@example.com"),
             ],
         )
 
@@ -787,7 +838,7 @@ class TestLoadAndExtendDataForEmail:
         assert result == {}
         assert pd_sredis.hget("managers", "1") == b"1"
 
-    def test_empty_messages_returns_empty_dict(self, mocker):
+    def test_empty_messages_returns_empty_dict(self, mocker, pd_sredis):
         get_topic_and_prev_email_mock = mocker.patch("chat.notifications.email_sending.get_topic_and_prev_email")
 
         result = load_and_extend_data_for_email(
@@ -797,3 +848,39 @@ class TestLoadAndExtendDataForEmail:
 
         assert result == {}
         get_topic_and_prev_email_mock.assert_not_called()
+
+    # def test_prev_worker_already_create_chat(self, mocker, pd_sredis):
+    #     mocker.patch(
+    #         "chat.notifications.email_sending.get_topic_and_prev_email",
+    #         return_value=({"client": False, "chat": False}, "Product-222", "email2"),
+    #     )
+    #     pd_sredis.hincrby("managers", "1", 1)
+    #
+    #     msgs = [
+    #         {
+    #             "client_id": 1,
+    #             "chat_id": "chat",
+    #             "call": None,
+    #             "new_chat": True,
+    #             "item_id": 456,
+    #             "read": None,
+    #             "skipped_msgs": 0,
+    #         }
+    #     ]
+    #
+    #     result = load_and_extend_data_for_email(manager_id=1, msgs=msgs)
+    #     assert result == {
+    #         0: {
+    #             "client_id": 1,
+    #             "chat_id": "chat",
+    #             "call": None,
+    #             "new_chat": False,
+    #             "item_id": 456,
+    #             "topic": "Product-222",
+    #             "prev_email": "email2",
+    #             "read": None,
+    #             "skipped_msgs": 0,
+    #         }
+    #     }
+    #     assert pd_sredis.hget("managers", "1") == b"0"
+

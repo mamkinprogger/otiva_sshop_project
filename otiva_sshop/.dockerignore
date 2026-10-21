@@ -3,4 +3,4 @@ _fast_folder
 .pytest_cache
 __pycache__
 
-README.txt
+README.md

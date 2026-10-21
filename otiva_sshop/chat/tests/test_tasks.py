@@ -36,7 +36,6 @@ def add_msg_for_manager(test_redis_broker, correct_message_factory):
 
     def add_msg(
             manager_id: int | str,
-            new_chat: bool = False,
             message=input_message,
             proc_key: bool = False,
             same_msgs: bool = False,
@@ -105,7 +104,7 @@ class TestChooseMessages:
         processing_key = f"{manager_id}:processing"
 
         msg = correct_message_factory(item_id=True)
-        add_msg_for_manager(manager_id, new_chat=True, message=msg)
+        add_msg_for_manager(manager_id, message=msg)
         msg_entity = MessageFromWebhook(msg).create()
 
         choose_result = choose_messages(manager_key, processing_key)
@@ -145,7 +144,7 @@ class TestChooseMessages:
         msgs = []
         for i in range(5):
             msg = correct_message_factory(item_id=bool(i % 2))
-            add_msg_for_manager(manager_key, bool(i % 2), msg)
+            add_msg_for_manager(manager_key, msg)
             msgs.append(MessageFromWebhook(msg))
 
         messages, raw_messages = choose_messages(manager_key, processing_key)
@@ -175,9 +174,9 @@ class TestChooseMessages:
 
         for i in range(3):
             msg = correct_message_factory(item_id=bool(i % 2))
-            add_msg_for_manager(manager_key, bool(i % 2), msg)
+            add_msg_for_manager(manager_key, msg)
             for j in range(i):
-                add_msg_for_manager(manager_key, bool(j % 2), msg)
+                add_msg_for_manager(manager_key, msg)
 
         messages, raw_messages = choose_messages(manager_key, processing_key)
 
@@ -185,6 +184,32 @@ class TestChooseMessages:
         assert len(raw_messages) == 5
         assert pd_redis_broker.llen(manager_key) == 0
         assert pd_redis_broker.llen(processing_key) == 5
+
+    def test_max_emails_limit_respected_when_in_proc_pend_contains_same_chat_id(
+            self,
+            add_msg_for_manager,
+            pd_redis_broker,
+            correct_message_factory,
+    ):
+        manager_id = 11111
+        chat_id = "MyChatId-123"
+        manager_key = str(manager_id)
+        processing_key = f"{manager_id}:processing"
+
+        for i in range(3):
+            msg = correct_message_factory(item_id=bool(i % 2))
+            msg["chat_id"] = chat_id
+            add_msg_for_manager(manager_key, msg)
+            add_msg_for_manager(processing_key, msg)
+
+        messages, raw_messages = choose_messages(manager_key, processing_key)
+
+        assert len(messages) == 2
+        assert len(raw_messages) == 2
+        assert pd_redis_broker.llen(manager_key) == 0
+        assert pd_redis_broker.llen(processing_key) == 2
+        assert messages[0]["skipped_msgs"] == 4
+        assert messages[1]["skipped_msgs"] == 0
 
 
 @pytest.mark.usefixtures("precreate_ids_off")
@@ -246,8 +271,6 @@ class TestSendManager:
 
     def test_fail_one_unexpected_err_sending(self, mocker):
         manager_id = 11111
-        manager_key = str(manager_id)
-        processing_key = f"{manager_id}:processing"
 
         msgs = [{
             "client_id": 333,

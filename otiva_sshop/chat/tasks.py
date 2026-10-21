@@ -86,19 +86,12 @@ def choose_messages(
 
     Messages which exceeded max_emails are removed
     """
-    messages: list[dict] = []
-    raw_messages: list[bytes] = []
-    remove_messages = []
-
     processing_msgs = redis_broker.lrange(processing_key, 0, -1)
     pending_msgs = lmove_entities(msgs_key, processing_key)
 
-    for i in [processing_msgs, pending_msgs]:
-        msgs, rm_msgs = unpack_msgs(i, max_emails)
-        for raw_message, message in msgs.items():
-            messages.append(message)
-            raw_messages.append(raw_message)
-        remove_messages.extend(rm_msgs)
+    messages_data, remove_messages = unpack_msgs(pending_msgs + processing_msgs, max_emails)
+    messages = list(messages_data.values())
+    raw_messages = list(messages_data)
 
     if remove_messages:
         with redis_broker.pipeline() as pipe:

@@ -51,17 +51,58 @@ async def assign_manager(
 
 async def manager_response_lag(msg: MessageFromWebhook):
     """Written the time it takes to wait for a response from manager"""
-    cached_chat = await redis.get(msg.chat_id)
-    if not cached_chat:
-        return
-    manager, received_time = map(int, cached_chat.split(b":"))
-    waiting_time = abs(msg.sending_time - received_time)//60 if received_time else 0
+    # string.find() находит позицию двоеточия
+    # string.sub() извлекает подстроку
+    # tonumber() преобразует строку с числом в числовое значение Lua
+    script = """
+    local cached_chat = redis.call('GET', KEYS[1])
+    if not cached_chat then
+        return 0
+    end
 
-    async with redis.pipeline(transaction=True) as pipe:
-        await pipe.set(msg.chat_id, f"{manager}:0", ex=60 * 60 * 24 * 3)
-        if waiting_time:
-            await pipe.lpush(f"{manager}:response_lag", waiting_time)
-        await pipe.execute()
+    local separator = string.find(cached_chat, ':')
+    if not separator then
+        return redis.error_reply('Invalid chat state')
+    end
+
+    local manager = string.sub(cached_chat, 1, separator - 1)
+    local received_time = tonumber(string.sub(cached_chat, separator + 1))
+    if not received_time then
+        return redis.error_reply('Invalid received_time')
+    end
+    if received_time == 0 then
+        return 0
+    end
+
+    redis.call('SET', KEYS[1], manager .. ':0', 'EX', ARGV[2])
+    local waiting_time = math.floor(math.abs(tonumber(ARGV[1]) - received_time) / 60)
+
+    if waiting_time > 0 then
+        redis.call('LPUSH', manager .. ':response_lag', waiting_time)
+    end
+    return 1
+    """
+    # Equal python script below
+    #
+    # cached_chat = await redis.get(msg.chat_id)
+    # if not cached_chat:
+    #     return
+    # manager, received_time = map(int, cached_chat.split(b":"))
+    # waiting_time = abs(msg.sending_time - received_time) // 60 if received_time else 0
+    #
+    # async with redis.pipeline(transaction=True) as pipe:
+    #     await pipe.set(msg.chat_id, f"{manager}:0", ex=60 * 60 * 24 * 3)
+    #     if waiting_time:
+    #         await pipe.lpush(f"{manager}:response_lag", waiting_time)
+    #     await pipe.execute()
+    await redis.eval(
+        script,
+        1, # следующий аргумент - один ключ из KEYS
+        str(msg.chat_id), # KEYS[1]
+        msg.sending_time, # ARGV[1]
+        60 * 60 * 24 * 3, # ARGV[2]
+        "", # ARGV[3]
+    )
 
 async def get_client_creating(pinned_manager: bytes | None, chat_id: str) -> bool:
     if not pinned_manager:

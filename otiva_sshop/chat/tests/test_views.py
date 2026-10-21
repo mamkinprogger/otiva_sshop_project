@@ -122,17 +122,10 @@ class TestManagerResponseLag:
         assert int(await pd_redis.ttl(msg.chat_id)) in range(expected_ttl - 5, expected_ttl + 5)
         assert not await pd_redis.lrange(f"{manager}:response_lag", 0, -1)
 
-    async def test_manager_response_lag_no_cached_chat(self, monkeypatch, correct_message_factory):
-        redis_mock = AsyncMock()
-        redis_mock.get.return_value = None
-        monkeypatch.setattr(views, "redis", redis_mock)
-
+    async def test_manager_response_lag_no_cached_chat(self, pd_redis, correct_message_factory):
         msg = MessageFromWebhook(correct_message_factory())
         await manager_response_lag(msg)
-
-        redis_mock.get.assert_awaited_once_with(msg.chat_id)
-        redis_mock.set.assert_not_awaited()
-        redis_mock.lpush.assert_not_awaited()
+        assert await pd_redis.lrange("11111:response_lag", 0, -1) == []
 
     @pytest.mark.parametrize("sending_time, expect", [
         (999880, [b"2"]),

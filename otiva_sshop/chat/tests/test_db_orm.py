@@ -187,7 +187,8 @@ class TestGetOrCreateClientFromHisMsg:
         assert result == {
             "client_added": True,
             "client_name": "Аноним",
-            "chat_added": True
+            "chat_added": True,
+            "increase_manager_load": True,
         }
 
     def test_client_exists_but_just_written_in_chat(self, db_manager_factory, db_client_factory):
@@ -211,7 +212,8 @@ class TestGetOrCreateClientFromHisMsg:
         assert result == {
             "client_added": False,
             "client_name": "Виталий",
-            "chat_added": True
+            "chat_added": True,
+            "increase_manager_load": True,
         }
 
     def test_client_open_second_chat(self, db_client_factory, db_manager_factory):
@@ -241,7 +243,8 @@ class TestGetOrCreateClientFromHisMsg:
         assert result == {
             "client_added": False,
             "client_name": "Аноним",
-            "chat_added": True
+            "chat_added": True,
+            "increase_manager_load": False,
         }
 
     def test_client_chatted_before_his_prev_email_updated(self, db_manager_factory, db_client_factory):
@@ -269,7 +272,8 @@ class TestGetOrCreateClientFromHisMsg:
         assert result == {
             "client_added": False,
             "client_name": "Виталий",
-            "chat_added": False
+            "chat_added": False,
+            "increase_manager_load": False,
         }
 
     def test_new_client_chatting_in_foreign_chat(self, db_client_factory, db_manager_factory):
@@ -322,7 +326,8 @@ class TestGetOrCreateClientFromHisMsg:
         assert result == {
             "client_added": False,
             "client_name": "Виталий",
-            "chat_added": True
+            "chat_added": True,
+            "increase_manager_load": False,
         }
 
     def test_manger_deleted_but_msg_from_new_client_already_in_processing_with_old_manager_id(self, db_client_factory):
@@ -342,7 +347,8 @@ class TestGetOrCreateClientFromHisMsg:
         assert result == {
             "client_added": True,
             "client_name": "Аноним",
-            "chat_added": True
+            "chat_added": True,
+            "increase_manager_load": False,
         }
 
     def test_get_emails_new_client(self, db_manager_factory):
@@ -364,6 +370,7 @@ class TestGetOrCreateClientFromHisMsg:
             "client_name": "Аноним",
             "prev_email": None,
             "chat_added": True,
+            "increase_manager_load": True,
         }
 
     def test_get_emails_old_client(self, db_manager_factory, db_client_factory):
@@ -385,6 +392,7 @@ class TestGetOrCreateClientFromHisMsg:
             "client_name": "Виталий",
             "prev_email": None,
             "chat_added": True,
+            "increase_manager_load": True,
         }
 
     def test_get_emails_already_chatted(self, db_manager_factory, db_client_factory):
@@ -407,6 +415,7 @@ class TestGetOrCreateClientFromHisMsg:
             "client_name": "Виталий",
             "prev_email": prev_emails,
             "chat_added": True,
+            "increase_manager_load": True,
         }
 
     def test_increase_message_count(self, db_manager_factory):
@@ -430,4 +439,5 @@ class TestGetOrCreateClientFromHisMsg:
             "client_added": True,
             "client_name": "Аноним",
             "chat_added": True,
+            "increase_manager_load": True,
         }

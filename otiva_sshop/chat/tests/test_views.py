@@ -1,3 +1,4 @@
+import pickle
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -186,13 +187,15 @@ class TestIdentifyManager:
         self._client_mock(monkeypatch, None)
 
         msg = MessageFromWebhook(correct_message_factory())
+        msg_to_queue = pickle.dumps(msg.create())
+
         managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"1"
-        assert await pd_redis.hget("managers", 21111) == b"0"
-        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
+        msgs_in_queue = await pd_aredis_broker.lrange(11111, 0, -1)
+        assert len(msgs_in_queue) == 1
+        assert msgs_in_queue[0] == msg_to_queue
         assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
 
     async def test_client_in_creating_process(
@@ -207,15 +210,16 @@ class TestIdentifyManager:
         manager = 21111
 
         msg = MessageFromWebhook(correct_message_factory())
+        msg_to_queue = pickle.dumps(msg.create())
         managers = await pd_redis.hgetall("managers")
         await pd_redis.set(msg.chat_id, f"{manager}:{msg.sending_time - 20}")
-        await pd_aredis_broker.lpush(manager, f"new_chat=False;{msg.create_str()}")
+        await pd_aredis_broker.lpush(manager, msg_to_queue)
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"0"
-        assert await pd_redis.hget("managers", manager) == b"0"
-        assert (await pd_aredis_broker.lrange(manager, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        msgs_in_queue = await pd_aredis_broker.lrange(21111, 0, -1)
+        assert len(msgs_in_queue) == 2
+        assert msgs_in_queue[0] == msg_to_queue
         assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time - 20}".encode()
 
     async def test_cached_chat(
@@ -229,15 +233,16 @@ class TestIdentifyManager:
         self._client_mock(monkeypatch, {"manager_id": 11111, "manager_email": "a@a.ru"})
 
         msg = MessageFromWebhook(correct_message_factory())
+        msg_to_queue = pickle.dumps(msg.create())
         await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
         managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"0"
-        assert await pd_redis.hget("managers", 21111) == b"0"
+        msgs_in_queue = await pd_aredis_broker.lrange(11111, 0, -1)
+        assert len(msgs_in_queue) == 1
+        assert msgs_in_queue[0] == msg_to_queue
         assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
-        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_cached_chat_new_question_from_client(
             self,
@@ -250,15 +255,16 @@ class TestIdentifyManager:
         self._client_mock(monkeypatch, {"manager_id": 11111, "manager_email": "a@a.ru"})
 
         msg = MessageFromWebhook(correct_message_factory())
+        msg_to_queue = pickle.dumps(msg.create())
         await pd_redis.set(msg.chat_id, f"11111:0")
         managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"0"
-        assert await pd_redis.hget("managers", 21111) == b"0"
         assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
-        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
+        msgs_in_queue = await pd_aredis_broker.lrange(11111, 0, -1)
+        assert len(msgs_in_queue) == 1
+        assert msgs_in_queue[0] == msg_to_queue
 
     async def test_cached_chat_expired(
             self,
@@ -271,14 +277,15 @@ class TestIdentifyManager:
         self._client_mock(monkeypatch, {"manager_id": 21111, "manager_email": "a@a.ru"})
 
         msg = MessageFromWebhook(correct_message_factory())
+        msg_to_queue = pickle.dumps(msg.create())
         managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"0"
-        assert await pd_redis.hget("managers", 21111) == b"0"
+        msgs_in_queue = await pd_aredis_broker.lrange(21111, 0, -1)
+        assert len(msgs_in_queue) == 1
+        assert msgs_in_queue[0] == msg_to_queue
         assert await pd_redis.get(msg.chat_id) == f"21111:{msg.sending_time}".encode()
-        assert (await pd_aredis_broker.lrange(21111, 0, -1))[0].split(b";")[0] == "new_chat=False".encode()
 
     async def test_clients_managers_conflict(self, monkeypatch, pd_redis, correct_message_factory, mocker, logger_off):
         self._celery_mock(monkeypatch)
@@ -307,13 +314,14 @@ class TestIdentifyManager:
         self._client_mock(monkeypatch, {"manager_id": None, "manager_email": None})
 
         msg = MessageFromWebhook(correct_message_factory())
+        msg_to_queue = pickle.dumps(msg.create())
         managers = await pd_redis.hgetall("managers")
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"1"
-        assert await pd_redis.hget("managers", 21111) == b"0"
-        assert (await pd_aredis_broker.lrange(11111, 0, -1))[0].split(b";")[0] == "new_chat=True".encode()
+        msgs_in_queue = await pd_aredis_broker.lrange(11111, 0, -1)
+        assert len(msgs_in_queue) == 1
+        assert msgs_in_queue[0] == msg_to_queue
         assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time}".encode()
 
     async def test_existing_client_chatting_while_his_manager_updated(
@@ -330,12 +338,10 @@ class TestIdentifyManager:
         msg = MessageFromWebhook(correct_message_factory())
         managers = await pd_redis.hgetall("managers")
         await pd_redis.set(msg.chat_id, f"11111:{msg.sending_time - 20}")
-        await pd_aredis_broker.lpush("11111:processing", f"new_chat=False;{msg.create_str()}")
+        await pd_aredis_broker.lpush("11111:processing", pickle.dumps(msg.create()))
 
         await identify_manager(msg, managers)
 
-        assert await pd_redis.hget("managers", 11111) == b"0"
-        assert await pd_redis.hget("managers", 21111) == b"0"
         assert await pd_redis.get(msg.chat_id) == f"11111:{msg.sending_time - 20}".encode()
 
     async def test_chat_open_but_client_not_exists(self, monkeypatch, pd_redis, correct_message_factory):
@@ -365,8 +371,7 @@ class TestGetClientCreating:
     async def test_in_pending(self, pd_aredis_broker, correct_message_factory):
         manager = b"11111"
         msg = MessageFromWebhook(correct_message_factory())
-        str_msg = msg.create_str()
-        msg_to_queue = f"new_chat=True;{str_msg}"
+        msg_to_queue = pickle.dumps(msg.create())
         await pd_aredis_broker.lpush(manager, msg_to_queue)
 
         result = await get_client_creating(manager, msg.chat_id)
@@ -377,8 +382,7 @@ class TestGetClientCreating:
         manager = "11111"
         proc_key = f"{manager}:processing"
         msg = MessageFromWebhook(correct_message_factory())
-        str_msg = msg.create_str()
-        msg_to_queue = f"new_chat=True;{str_msg}"
+        msg_to_queue = pickle.dumps(msg.create())
         await pd_aredis_broker.lpush(proc_key, msg_to_queue)
 
         result = await get_client_creating(manager.encode(), msg.chat_id)
@@ -388,8 +392,7 @@ class TestGetClientCreating:
     async def test_not_in_queues(self, pd_aredis_broker, correct_message_factory):
         manager = b"11111"
         msg = MessageFromWebhook(correct_message_factory())
-        str_msg = msg.create_str()
-        msg_to_queue = f"new_chat=True;{str_msg}"
+        msg_to_queue = pickle.dumps(msg.create())
         await pd_aredis_broker.lpush(manager, msg_to_queue)
 
         msg2 = MessageFromWebhook(correct_message_factory())
@@ -403,7 +406,7 @@ class TestGetClientCreating:
         msg2 = MessageFromWebhook(correct_message_factory())
 
         msg.text = f"~chat_id:{msg2.chat_id}~"
-        msg_to_queue = f"new_chat=True;{msg.create_str()}"
+        msg_to_queue = pickle.dumps(msg.create())
         await pd_aredis_broker.lpush(manager, msg_to_queue)
 
         result = await get_client_creating(manager, msg2.chat_id)

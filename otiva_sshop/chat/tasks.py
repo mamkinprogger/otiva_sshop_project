@@ -1,5 +1,6 @@
 import concurrent.futures
 import logging
+import pickle
 import smtplib
 import sys
 import time
@@ -10,7 +11,6 @@ from app.misc.celery_misc import celery
 from app.misc.redis_misc import redis_broker, RedisLocker
 from app.settings import EMAIL_DOMAIN_NAME, MIN_MAIL_ID_COUNT
 from chat.notifications.email_sending import send_notifications_on_email, load_and_extend_data_for_email
-from chat.utils import MessageFromWebhook
 
 logger = logging.getLogger("celery_logger")
 logger_shipping = logging.getLogger("celery_logger_shipping")
@@ -54,19 +54,16 @@ def unpack_msgs(msg_entities: list[bytes], max_emails: int) -> tuple[dict[bytes,
 
     viewed = dict()
     for msg_entity in msg_entities:
-        new_chat, _, msg_data = msg_entity.decode().partition(";")
-        message = MessageFromWebhook().unpack_str_msg(msg_data)
+        message = pickle.loads(msg_entity)
         chat_id = message["chat_id"]
+        message["skipped_msgs"] = 0
         count = viewed.get(chat_id, 0)
 
-        message["skipped_msgs"] = 0
-        message["new_chat"] = new_chat == "new_chat=True" if count == 0 else False
         if count + 1 > max_emails:
             remove_messages.append(msg_entity)
         else:
             messages[msg_entity] = message
         viewed[chat_id] = count + 1
-
     for chat in viewed:
         count = viewed[chat]
         for msg in messages.values():
@@ -137,8 +134,7 @@ def send_manager(manager_id: int, manager_email: str, messages: list[dict]) -> l
         msg = messages_data[res[0]]
         fail_type = res[2]
         if isinstance(fail_type, smtplib.SMTPException):
-            msg_str = MessageFromWebhook(msg).create_str()
-            retries.append(f"new_chat={msg["new_chat"]};{msg_str}")
+            retries.append(pickle.dumps(msg))
     return retries
 
 # можно тоже перекинуть к RedisMyClass; и через *argv получать количество значений в ключах

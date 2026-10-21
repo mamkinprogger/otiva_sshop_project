@@ -180,38 +180,55 @@ class EmailNotification:
 
 
 
-def get_topic_and_prev_email(
-        manager_id: int,
-        client_id: int,
-        chat_id: str,
-        call: str | None,
-        item_id: int | None,
-        read: int | None = None,
-        skipped_msg:int = 0
-) -> tuple[dict[str, bool], str, str | None]: # вызвать ошибку если read
-    """
-    Update manager load and get previous mail from client
-    If item_id passed, check existing item_id
-    """
-    client_db_data = orm_get_or_create_client_from_his_msg(
-        manager_id,
-        client_id,
-        chat_id,
-        skipped_msg
-    )
-    orm_update_manager_load(manager_id, call, client_db_data["client_added"])
-    if read:
-        raise EmailNotificationError("Message already read")
-
+def get_ad_name(item_id: int | None) -> str:
     product = "НеОбъявление"
     if item_id is not None:
         product = orm_get_avito_product(item_id)
-    topic = f"{product}-{chat_id}:{client_db_data["client_name"]}"
-    just_added = {
-        "client": client_db_data["client_added"],
-        "chat": client_db_data["chat_added"],
-    }
-    return just_added, topic, client_db_data["prev_email"]
+    return product
+
+
+def update_manager_load(
+        manager_id: int,
+        call: str | None,
+        manager_new_chat: bool
+) -> None:
+    """
+    Updated manager load in db
+    Updated manager load in redis-storage
+    """
+    orm_update_manager_load(manager_id, call, manager_new_chat)
+    if manager_new_chat:
+        sredis.hincrby("managers", manager_id, 1)
+
+
+def load_fields_to_send_on_email(
+    manager_id: int,
+    client_id: int,
+    chat_id: str,
+    call: str | None,
+    item_id: int | None,
+    read: int | None = None,
+    skipped_msg: int = 0
+) -> tuple[str, str | None] | EmailNotificationError:
+    """
+    Update and create, if necessary, db/redis-storage records
+
+    raise EmailNotificationError if message should not be sent
+
+    return tuple[topic, prev_email]
+    """
+    try:
+        client_data = orm_get_or_create_client_from_his_msg(manager_id, client_id, chat_id, skipped_msg)
+        update_manager_load(manager_id, call, client_data["increase_manager_load"])
+        if read:
+            raise EmailNotificationError("Message already read")
+    except ClientPermissionError as e:
+        logger.warning(repr(e))
+        raise EmailNotificationError() from e
+
+    ad_name = get_ad_name(item_id)
+    topic = f"{ad_name}-{chat_id}:{client_data["client_name"]}"
+    return topic, client_data["prev_email"]
 
 
 def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
@@ -231,7 +248,7 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
                 [
                     sequence,
                     executor.submit(
-                        get_topic_and_prev_email,
+                        load_fields_to_send_on_email,
                         manager_id, message["client_id"], message["chat_id"],
                         message["call"], message["item_id"], message["read"], message["skipped_msgs"]
                     )
@@ -244,15 +261,11 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
         for sequence, future in futures:
             exc = future.exception()
             if exc:
-                if isinstance(exc, EmailNotificationError):
-                    pass
-                else:
+                if not isinstance(exc, EmailNotificationError):
                     logger.error(repr(future.exception()))
-                    if isinstance(exc, ClientPermissionError) and messages[sequence]["new_chat"] is True:
-                        sredis.hincrby("managers", str(manager_id), -1)
                 messages.pop(sequence)
             else:
-                _, topic, prev_email = future.result()
+                topic, prev_email = future.result()
                 messages[sequence]["topic"] = topic
                 messages[sequence]["prev_email"] = prev_email
     return messages

@@ -57,7 +57,7 @@ def orm_get_or_create_client_from_his_msg(
         chat_id: str,
         increase_count_msgs: int = 0,
         get_emails=True,
-) -> dict[str, str | bool]:
+) -> dict[str, str | bool] | ClientPermissionError:
     """
     Checks whether the client can send messages from the passed chat -> creates ClientsChatAvito() if necessary.
     Updates the count of messages sent by the client.
@@ -68,6 +68,7 @@ def orm_get_or_create_client_from_his_msg(
      "client_added": bool,
      "client_name": str,
      "chat_added": bool,
+     "increase_manager_load": bool,
      Optional["prev_email"]: str | None"]
     ]
     """
@@ -97,6 +98,7 @@ def orm_get_or_create_client_from_his_msg(
             f"Клиент {client_id} пытается получить доступ к чату который ему не принадлежит"
         ) from None
 
+    new_pin = not client.pinned_manager_id and manager_exists
     if not just_added:
         if client.name and (name := client.name.strip()):
             client_name = name
@@ -104,14 +106,15 @@ def orm_get_or_create_client_from_his_msg(
             prev_email = email
 
         updated_fields: dict[str, Any] = {"emails_count": F("emails_count") + increase}
-        if not client.pinned_manager_id and manager_exists:
+        if new_pin:
             updated_fields["pinned_manager_id"] = manager_id
         Clients.objects.filter(client_id=client_id).update(**updated_fields)
 
     result = {
         "client_added": just_added,
         "client_name": client_name,
-        "chat_added": chat_just_added
+        "chat_added": chat_just_added,
+        "increase_manager_load": (just_added and manager_exists) or new_pin
     }
     if get_emails:
         result["prev_email"] = prev_email

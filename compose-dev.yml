@@ -54,7 +54,7 @@ services:
     image: django-app-dev:1.0.0
     container_name: celery
     entrypoint: []
-    command: celery -A app.misc.celery_misc worker --loglevel=info -Q chatting,celery
+    command: celery -A app.misc.celery_misc worker -n main --loglevel=info -Q chatting,celery
     restart: unless-stopped
     env_file:
       - ./otiva_sshop/.env
@@ -68,8 +68,8 @@ services:
   celery-make-ids:
     image: django-app-dev:1.0.0
     container_name: celery-make-ids
-    entrypoint: [ ]
-    command: celery -A app.misc.celery_misc worker --loglevel=info  --pool=solo -Q make_emails_ids
+    entrypoint: []
+    command: celery -A app.misc.celery_misc worker -n id-maker --loglevel=info  --pool=solo -Q make_emails_ids
     restart: unless-stopped
     env_file:
       - ./otiva_sshop/.env

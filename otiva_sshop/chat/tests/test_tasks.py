@@ -1,3 +1,4 @@
+import pickle
 import random
 import string
 from smtplib import SMTPException
@@ -44,13 +45,13 @@ def add_msg_for_manager(test_redis_broker, correct_message_factory):
         message["id"] = "".join(random.choice(string.ascii_letters) for _ in range(30)) if not same_msgs else message["id"]
         msg = MessageFromWebhook(message)
 
-        msg_to_queue = f"{new_chat=};{msg.create_str()}"
+        msg_to_queue = pickle.dumps(msg.create())
         if proc_key:
             processing_key = f"{manager_id}:processing"
             broker.lpush(processing_key, msg_to_queue)
         else:
             broker.lpush(target_manager, msg_to_queue)
-        return msg_to_queue.encode()
+        return msg_to_queue
 
     return add_msg
 
@@ -120,7 +121,6 @@ class TestChooseMessages:
 
         for i in msg_entity:
             assert msg_entity[i] == messages[0].get(i)
-        assert isinstance(messages[0].get("new_chat"), bool)
 
     def test_add_wasted_msgs(self, add_msg_for_manager, pd_redis_broker):
         manager_id = 11111
@@ -277,7 +277,6 @@ class TestSendManager:
             "client_id": 333,
             "topic": "AvotTAK:Аноним",
             "prev_email": None,
-            "new_chat": True,
         }]
 
         mocker.patch(
@@ -290,21 +289,12 @@ class TestSendManager:
             return_value=[[i, False, SMTPException()] for i in range(len(msgs))],
         )
 
-        msg_str_mock = mocker.MagicMock()
-        msg_str_mock.create_str.return_value = "str_message"
-
-        message_from_webhook_mock = mocker.patch(
-            "chat.tasks.MessageFromWebhook",
-            return_value=msg_str_mock,
-        )
-
         messages, raw_messages = [[dict()], [f"msg_str{i}".encode() for i in range(len(msgs))]]
         retries = send_manager(manager_id, "asd@.ru", messages)
 
         assert len(retries) == 1
         assert len(raw_messages) == 1
-        assert retries[0] == f"new_chat={msgs[0]['new_chat']};str_message"
-        message_from_webhook_mock.assert_called_once_with(msgs[0])
+        assert retries[0] == pickle.dumps(msgs[0])
 
 
 class TestUnpackMessages:
@@ -363,22 +353,6 @@ class TestUnpackMessages:
             assert skipped == 0
         assert have_skipped == 1
         assert act_skipped == 3
-
-    def test_new_chat_fields(self, add_msg_for_manager, pd_redis_broker):
-        _ = [add_msg_for_manager(11111, new_chat=True) for _ in range(2)]
-        msgs = pd_redis_broker.lrange("11111", 0, -1)
-
-        messages, remove_entity = unpack_msgs(msgs, 2)
-
-        params_new_chat = []
-        for i in messages.values():
-            new_chat_field = i.get("new_chat")
-            params_new_chat.append(new_chat_field)
-        assert True in params_new_chat
-        assert False in params_new_chat
-        assert len(params_new_chat) == 2
-        for msg in messages:
-            assert messages[msg]["skipped_msgs"] == 0
 
     def test_already_read_msg(self, add_msg_for_manager, pd_redis_broker, correct_message_factory):
         msg = correct_message_factory(read=True)

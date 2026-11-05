@@ -10,7 +10,7 @@ services:
     expose:
       - 8000
     volumes:
-      - static_volume:/usr/src/otiva_sshop/static
+      - ./otiva_sshop/logs:/usr/src/otiva_sshop/logs
     env_file:
       - ./otiva_sshop/.env
     environment:
@@ -19,7 +19,7 @@ services:
       - db
       - redis
     networks:
-      - otiva_shop_network
+      - default_net
 
 
   nginx:
@@ -29,11 +29,11 @@ services:
         - ./conf.d:/etc/nginx/conf.d
         - static_volume:/app/static
     ports:
-      - 8000:80
+      - "8000:80"
     depends_on:
       - web
     networks:
-      - otiva_shop_network
+      - default_net
 
 
   db:
@@ -47,7 +47,7 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data/
     networks:
-      - otiva_shop_network
+      - default_net
 
 
   celery:
@@ -56,6 +56,8 @@ services:
     entrypoint: []
     command: celery -A app.misc.celery_misc worker -n main --loglevel=info -Q chatting,celery
     restart: unless-stopped
+    volumes:
+      - ./otiva_sshop/logs:/usr/src/otiva_sshop/logs
     env_file:
       - ./otiva_sshop/.env
     environment:
@@ -63,7 +65,7 @@ services:
     depends_on:
       - web
     networks:
-      - otiva_shop_network
+      - default_net
 
   celery-make-ids:
     image: django-app-dev:1.0.0
@@ -71,6 +73,8 @@ services:
     entrypoint: []
     command: celery -A app.misc.celery_misc worker -n id-maker --loglevel=info  --pool=solo -Q make_emails_ids
     restart: unless-stopped
+    volumes:
+      - ./otiva_sshop/logs:/usr/src/otiva_sshop/logs
     env_file:
       - ./otiva_sshop/.env
     environment:
@@ -78,7 +82,7 @@ services:
     depends_on:
       - web
     networks:
-      - otiva_shop_network
+      - default_net
 
 
   celery-beat:
@@ -87,6 +91,8 @@ services:
     entrypoint: []
     command: celery -A app.misc.celery_misc beat --loglevel=info
     restart: unless-stopped
+    volumes:
+      - ./otiva_sshop/logs:/usr/src/otiva_sshop/logs
     env_file:
       - ./otiva_sshop/.env
     environment:
@@ -94,7 +100,7 @@ services:
     depends_on:
       - web
     networks:
-      - otiva_shop_network
+      - default_net
 
   redis:
     image: redis:7.2-alpine
@@ -106,7 +112,7 @@ services:
     ports:
       - "6379:6379"
     networks:
-      - otiva_shop_network
+      - default_net
 
 
   flower:
@@ -122,7 +128,7 @@ services:
     ports:
       - "5555:5555"
     networks:
-      - otiva_shop_network
+      - default_net
 
   redis-gui:
     image: redis/redisinsight
@@ -131,9 +137,9 @@ services:
       RI_REDIS_HOST: redis
       RI_REDIS_PASSWORD: otiva_shop_redispass
     ports:
-      - 5540:5540
+      - "5540:5540"
     networks:
-      - otiva_shop_network
+      - default_net
 
 
 volumes:
@@ -142,4 +148,5 @@ volumes:
   static_volume:
 
 networks:
-  otiva_shop_network:
+  default_net:
+    external: true

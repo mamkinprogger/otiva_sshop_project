@@ -7,7 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import make_msgid
 
-from app.settings import ROOT_EMAIL, EMAIL_PASSWORD, EMAIL_DOMAIN_NAME
+from app.settings import ROOT_EMAIL, EMAIL_PASSWORD, EMAIL_DOMAIN_NAME, SMTP_PORT, SMTP_SERVER
 
 logger = logging.getLogger("chat_logger")
 
@@ -153,33 +153,53 @@ class SMTPEmailSender:
     def __init__(
             self,
             from_email: str,
-            password: str,
+            password: str | None,
             smtp_server: str = "smtp.yandex.com",
             port: int = 465,
             timeout: int = 7,
+            use_ssl: bool = True,
+            use_starttls: bool = False
     ):
         self.from_email = from_email
         self.password = password
         self.smtp_server = smtp_server
         self.port = port
         self.timeout = timeout
+        self.use_ssl = use_ssl
+        self.use_starttls = use_starttls
 
-        self.client: smtplib.SMTP_SSL | None = None
+        if use_ssl and use_starttls:
+            raise ValueError(
+                "use_ssl and use_starttls cannot both be enabled"
+            )
+
+        self.client: smtplib.SMTP | smtplib.SMTP_SSL | None = None
         self.ctx = ssl.create_default_context()
 
     def connect(self) -> None:
         """Open SSL connection to server"""
-        self.client = smtplib.SMTP_SSL(
-            self.smtp_server,
-            self.port,
-            context=self.ctx,
-            timeout=self.timeout,
-        )
+        if self.use_ssl:
+            self.client = smtplib.SMTP_SSL(
+                self.smtp_server,
+                self.port,
+                context=self.ctx,
+                timeout=self.timeout
+            )
+        else:
+            self.client = smtplib.SMTP(
+                self.smtp_server,
+                self.port,
+                timeout=self.timeout
+            )
 
-        self.client.login(
-            self.from_email,
-            self.password,
-        )
+            if self.use_starttls:
+                self.client.starttls(context=self.ctx)
+
+        if self.password is not None:
+            self.client.login(
+                self.from_email,
+                self.password
+            )
 
     def send(self, mail: MIMEMultipart) -> None:
         """
@@ -329,16 +349,27 @@ class ShopEmail:
         Send an email with an SMTP server. Establishes connection immediately over ssl
         :return: list[tuple[str[mail_id], bool[success]]]
         """
-        smtp_server = "smtp.yandex.com"
-        port = 465
+        smtp_server = SMTP_SERVER
+        port = SMTP_PORT
         timeout = 7
 
+        sender_conf = {
+            "from_email": self.from_email,
+            "password": self.password if smtp_server == "smtp.yandex.com" else None,
+            "smtp_server": smtp_server,
+            "port": port,
+            "timeout": timeout,
+            "use_ssl": True if smtp_server == "smtp.yandex.com" else False
+        }
+
         results = []
-        for email in emails: # можно как бы тут удалять msg_entity, которые в proc_key, чтобы точно минимизировать переотправку сообщений если воркер умер
+        for email in emails:
             try:
-                with SMTPEmailSender(self.from_email, self.password, smtp_server, port, timeout) as sender:
+                with SMTPEmailSender(**sender_conf) as sender:
                         sender.send(email)
                         results.append((email["Message-ID"], True, None))
+            except smtplib.SMTPDataError as smtp_err:
+                logger.warning(f'Ошибка с SMTP {smtp_err}')
             except smtplib.SMTPException as smtp_err:
                 logger.error(f'Ошибка с SMTP {smtp_err}')
                 results.append((email["Message-ID"], False, smtp_err))

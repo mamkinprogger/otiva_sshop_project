@@ -15,6 +15,10 @@ sets/
 
 db.sqlite3
 
+node_modules/
+
 _fast_folder/
 enter_in_container/
 celerybeat-schedule*
+
+chat/tests/load/_reports

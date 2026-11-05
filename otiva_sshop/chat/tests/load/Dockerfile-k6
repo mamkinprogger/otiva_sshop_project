@@ -1,0 +1,18 @@
+FROM grafana/xk6:latest AS builder
+
+
+RUN xk6 --verbose build v2.3.0 \
+    --output /tmp/k6 \
+    --with github.com/grafana/xk6-redis@v0.4.5
+
+FROM grafana/k6:2.3.0
+
+COPY --from=builder /tmp/k6 /usr/bin/k6
+
+WORKDIR /src
+
+COPY ./k6-entrypoint.sh .
+RUN sed -i 's/\r$//g' /src/k6-entrypoint.sh
+RUN chmod +x /src/k6-entrypoint.sh
+
+ENTRYPOINT ["./k6-entrypoint.sh"]

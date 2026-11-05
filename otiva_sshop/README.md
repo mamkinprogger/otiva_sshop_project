@@ -115,7 +115,7 @@ Response Lag отражает время реакции менеджера на 
 ```.env
 DEBUG=True
 SECRET_KEY=<dev-secret-key>
-ALLOWED_HOSTS=localhost,127.0.0.1
+ALLOWED_HOSTS=http://localhost
 LOG_LEVEL=INFO
 
 POSTGRES_DB=<database-name>
@@ -150,7 +150,6 @@ docker exec -it django-app sh
 ```sh
 python manage.py createsuperuser
 ```
-Команду необходимо выполнять из каталога, в котором доступен `manage.py`.
 
 ### 4. Создание тестовых менеджеров
 
@@ -163,6 +162,10 @@ python manage.py createsuperuser
 
 ### 5. Настройка данных в Redis
 Подключитесь к Redis:
+
+```
+docker exec -it redis sh
+```
 
 ```
 redis-cli -a <redis-password>

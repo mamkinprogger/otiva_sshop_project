@@ -9,7 +9,7 @@ from celery.exceptions import Retry
 import chat.tasks as tasks
 from chat.tasks import choose_messages, send_manager, unpack_msgs, send_notification_task, notification_retry_task, \
     create_mail_id_task
-from chat.tests.conftest import correct_message_factory
+from chat.tests.quality.conftest import correct_message_factory
 from chat.utils import MessageFromWebhook
 from conftest import test_redis_broker
 

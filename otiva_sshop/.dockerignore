@@ -1,6 +1,15 @@
 _fast_folder
 
-.pytest_cache
-__pycache__
+**/.pytest_cache
+**/__pycache__
 
-README.md
+**/README.md
+команда запуска
+
+**/tests/load
+package.json
+package-lock.json
+
+**/*.env
+.idea
+htmlcov/*

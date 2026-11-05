@@ -4,6 +4,7 @@ from email.mime.multipart import MIMEMultipart
 
 import pytest
 
+from app.settings import K6_TEST_ENV
 from chat.utils import MessageFromWebhook, MessageFieldsException, CreateMailException, ShopEmail, \
     InvalidMailFieldException, SMTPEmailSender
 
@@ -548,11 +549,12 @@ class TestSendEmailFromYandex:
         result = shop_email.send_email_from_yandex([mail])
 
         sender_class.assert_called_once_with(
-            shop_email.from_email,
-            shop_email.password,
-            "smtp.yandex.com",
-            465,
-            7,
+            from_email=shop_email.from_email,
+            password=shop_email.password if not K6_TEST_ENV else None,
+            smtp_server="smtp.yandex.com" if not K6_TEST_ENV else "mailpit",
+            port=465 if not K6_TEST_ENV else 1025,
+            timeout=7,
+            use_ssl=True if not K6_TEST_ENV else False,
         )
         sender.send.assert_called_once_with(mail)
         assert result == [("<message@example.com>", True, None)]

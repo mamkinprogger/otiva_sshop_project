@@ -27,15 +27,19 @@ def read_secret(secret_name):
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = os.getenv('SECRET_KEY')
-DEBUG = os.getenv("DEBUG", False)
+DEBUG = bool(os.getenv("DEBUG", False))
 DOCKER_START_APP = os.getenv("DOCKER_START_APP", "false") == "true"
 
 ROOT_EMAIL = os.getenv("ROOT_EMAIL")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_DOMAIN_NAME = os.getenv("MAIL_DOMAIN_NAME")
 
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT"))
+
 AVITO_STORE_ID = int(os.getenv("AVITO_STORE_ID"))
 
+K6_TEST_ENV = bool(os.getenv("K6_TEST_ENV", False))
 
 
 if os.getenv('ALLOWED_HOSTS'):

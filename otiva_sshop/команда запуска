@@ -1,9 +1,0 @@
-python -m uvicorn app.asgi:application
-
---reload
-
-celery -A app.misc.celery_misc worker --loglevel=info --pool=solo
-celery -A app.misc.celery_misc beat --loglevel=info --pool=solo
-celery -A app.misc.celery_misc flower
-
-pytest --cov=src --cov-report=term-missing

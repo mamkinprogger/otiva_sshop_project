@@ -262,7 +262,9 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
             exc = future.exception()
             if exc:
                 if not isinstance(exc, EmailNotificationError):
-                    logger.error(repr(future.exception()))
+                    logger.error(repr(exc))
+                else:
+                    logger.info(repr(exc))
                 messages.pop(sequence)
             else:
                 topic, prev_email = future.result()

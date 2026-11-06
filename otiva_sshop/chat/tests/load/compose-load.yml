@@ -1,5 +1,6 @@
 services:
   web:
+    container_name: django-app-load
     image: django-app-load:1.0.0
     volumes: []
     env_file:
@@ -35,25 +36,20 @@ services:
       dockerfile: Dockerfile-k6
     image: k6-custom:1.0.0
     container_name: k6
-    command:
-      - run
-      - "/src/tests/${TEST_FILE}"
-    restart: "no"
+    command: run -e TEST_TYPE=${TEST_TYPE} /src/testing/tests/${TEST_FILE}
     ports:
       - "5665:5665"
     volumes:
-      - ./otiva_sshop/chat/tests/load/lib:/src/lib
-      - ./otiva_sshop/chat/tests/load/tests:/src/tests
       - ./otiva_sshop/chat/tests/load/_reports:/reports
+      - ./otiva_sshop/chat/tests/load/testing:/src/testing
     environment:
       K6_WEB_DASHBOARD: "true"
       K6_WEB_DASHBOARD_HOST: "0.0.0.0"
       K6_WEB_DASHBOARD_PORT: "5665"
       K6_WEB_DASHBOARD_PERIOD: "5s"
       K6_WEB_DASHBOARD_EXPORT: "${REPORT}"
-      BASE_URL: "http://web:8000"
     depends_on:
-      - web
+      - nginx
     networks:
       - default_net
 

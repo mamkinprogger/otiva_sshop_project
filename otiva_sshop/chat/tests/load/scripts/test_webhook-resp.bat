@@ -22,6 +22,7 @@ echo Start testing...
 docker compose -f ..\..\..\..\..\compose-dev.yml -f ..\compose-load.yml run --rm --service-ports ^
     -e "TEST_FILE=%TEST_FILE%" ^
     -e "REPORT=%REPORT%" ^
+    -e "TEST_TYPE=%TEST_TYPE%" ^
     k6
 
 docker compose -f ..\..\..\..\..\compose-dev.yml -f ..\compose-load.yml stop

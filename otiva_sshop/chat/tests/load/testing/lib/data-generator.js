@@ -1,6 +1,6 @@
 
 function randomString(length, alphabet) {
-    let result = '';
+    let result = "";
 
     for (let i = 0; i < length; i++) {
         result += alphabet[
@@ -11,10 +11,9 @@ function randomString(length, alphabet) {
     return result;
 }
 
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-const ALPHANUMERIC =
-    LETTERS + '0123456789-_';
+const ALPHANUMERIC = LETTERS + "0123456789-_";
 
 export function createMessage({
     withCall = false,
@@ -37,20 +36,20 @@ export function createMessage({
     const content = {
         call: withCall
             ? {
-                status: 'missed',
+                status: "missed",
                 target_user_id: 94235311,
             }
             : null,
     };
 
     if (text) {
-        content.text = 'Something text';
+        content.text = "Something text";
     }
 
     return {
         id: "abc",
         payload: {
-            type: 'message',
+            type: "message",
             value: {
                 author_id: authorId,
                 chat_id: randomString(30, ALPHANUMERIC),
@@ -61,7 +60,7 @@ export function createMessage({
                 content,
                 read: read ? timestamp + 1 : null,
                 id: randomString(30, LETTERS),
-            }
-        }
+            },
+        },
     };
 }

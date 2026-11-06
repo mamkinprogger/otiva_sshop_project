@@ -19,8 +19,11 @@ for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-m
 
 set "TEST_FILE=webhook-resp"
 set /p "TEST_FILE=Test file (%TEST_FILE%): "
+set "TEST_TYPE=smoke"
+set /p "TEST_TYPE=Test type (%TEST_TYPE%): "
 
 if not defined TEST_FILE set "TEST_FILE=webhook-response"
+if not defined TEST_Type set "TEST_TYPE=smoke"
 
 rem Remove .js if the user entered the extension
 if /i "%TEST_FILE:~-3%"==".js" set "TEST_FILE=%TEST_FILE:~0,-3%"

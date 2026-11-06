@@ -28,6 +28,7 @@ services:
     volumes:
         - ./conf.d:/etc/nginx/conf.d
         - static_volume:/app/static
+    restart: unless-stopped
     ports:
       - "8000:80"
     depends_on:
@@ -103,7 +104,7 @@ services:
       - default_net
 
   redis:
-    image: redis:7.2-alpine
+    image: redis:8.2-alpine
     container_name: redis
     command: redis-server --requirepass otiva_shop_redispass
     volumes:
@@ -120,11 +121,13 @@ services:
     container_name: flower
     command: celery -A app.misc.celery_misc flower
     entrypoint: []
-    restart: unless-stopped
+    restart: on-failure:5
     depends_on:
       - celery
     environment:
       DOCKER_START_APP: true
+    env_file:
+      - ./otiva_sshop/.env
     ports:
       - "5555:5555"
     networks:
@@ -133,6 +136,7 @@ services:
   redis-gui:
     image: redis/redisinsight
     container_name: redis-gui
+    restart: on-failure:5
     environment:
       RI_REDIS_HOST: redis
       RI_REDIS_PASSWORD: otiva_shop_redispass

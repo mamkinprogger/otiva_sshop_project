@@ -36,8 +36,12 @@ set "SCRIPT=test_%TEST_FILE%.bat"
 set "TEST_FILE=%TEST_FILE%.js"
 
 echo Update images...
-rem docker compose -f ..\..\..\..\..\compose-dev.yml -f ..\compose-load.yml build
-
+docker compose -f ..\..\..\..\..\compose-dev.yml -f ..\compose-load.yml build
+echo
+echo
+echo Testing %TEST_FILE%...
+echo
+echo
 call %SCRIPT%
 
 

@@ -19,12 +19,12 @@ class Command(BaseCommand):
         managers_data = [
             {
                 "manager_id": 11116,
-                "email": "manager_1@example.com",
+                "email": "manager1@example.com",
                 "phone": "+40700000001",
             },
             {
                 "manager_id": 21116,
-                "email": "manager_2@example.com",
+                "email": "manager2@example.com",
                 "phone": "+40700000002",
             },
         ]

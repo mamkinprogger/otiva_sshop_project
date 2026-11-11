@@ -1,19 +1,28 @@
 export const workloads = {
     smoke: {
-        executor: "shared-iterations",
-        vus: 1,
-        duration: "30s",
+        webhook_resp: {
+            executor: "constant-vus",
+            vus: 1,
+            duration: "30s",
+        },
+        notif_send: {
+            executor: "constant-vus",
+            vus: 1,
+            duration: "30s",
+        },
     },
 
-    average: {
-        executor: "ramping-vus",
-        startVUs: 0,
-        stages: [
-            { duration: "1m", target: 20 },
-            { duration: "2m", target: 20 },
-            { duration: "1m", target: 0 },
-        ],
-        gracefulRampDown: "10s"
+    average: { // можно добавить тут типо avg webhook-resp, avg celery-sending
+        webhook_resp: {
+            executor: "ramping-vus",
+            startVUs: 0,
+            stages: [
+                { duration: "1m", target: 150 },
+                { duration: "2m", target: 150 }, //220 верхний порог, за ним уже postgres не выдерживает столько подключений
+                { duration: "1m", target: 0 },
+            ],
+            gracefulRampDown: "10s"
+        },
     },
 
     stress: {

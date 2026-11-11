@@ -1,5 +1,9 @@
 
-function randomString(length, alphabet) {
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const ALPHANUMERIC = LETTERS + "0123456789-_";
+
+
+export function randomString(length, alphabet = ALPHANUMERIC) {
     let result = "";
 
     for (let i = 0; i < length; i++) {
@@ -10,10 +14,6 @@ function randomString(length, alphabet) {
 
     return result;
 }
-
-const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-const ALPHANUMERIC = LETTERS + "0123456789-_";
 
 export function createMessage({
     withCall = false,

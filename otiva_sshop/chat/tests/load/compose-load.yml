@@ -21,6 +21,41 @@ services:
       - default_net
 
 
+  celery:
+    image: django-app-load:1.0.0
+    container_name: celery-load
+    volumes: []
+    env_file:
+      - .\otiva_sshop\chat\tests\load\.env
+    environment:
+      K6_TEST_ENV: true
+    networks:
+      - default_net
+
+
+  celery-make-ids:
+    image: django-app-load:1.0.0
+    container_name: celery-make-ids-load
+    volumes: []
+    env_file:
+      - .\otiva_sshop\chat\tests\load\.env
+    environment:
+      K6_TEST_ENV: true
+    networks:
+      - default_net
+
+  celery-beat:
+    image: django-app-load:1.0.0
+    container_name: celery-beat-load
+    volumes: []
+    env_file:
+      - .\otiva_sshop\chat\tests\load\.env
+    environment:
+      K6_TEST_ENV: true
+    networks:
+      - default_net
+
+
   redis:
     container_name: redis-load
     command: redis-server --requirepass otiva_shop_redispass2
@@ -29,6 +64,23 @@ services:
     networks:
       - default_net
 
+  flower:
+    image: django-app-load:1.0.0
+    environment:
+      K6_TEST_ENV: true
+    env_file:
+      - .\otiva_sshop\chat\tests\load\.env
+    networks:
+      - default_net
+
+
+  redis-gui:
+    environment:
+      RI_REDIS_PASSWORD: otiva_shop_redispass2
+    ports:
+      - "5540:5540"
+    networks:
+      - default_net
 
   k6:
     build:
@@ -53,19 +105,11 @@ services:
     networks:
       - default_net
 
-
   mailpit:
     image: axllent/mailpit:v1.27
+    container_name: mailpit
     ports:
       - "8025:8025"
-    networks:
-      - default_net
-
-  redis-gui:
-    environment:
-      RI_REDIS_PASSWORD: otiva_shop_redispass2
-    ports:
-      - "5540:5540"
     networks:
       - default_net
 

@@ -3,7 +3,7 @@ import {sleep} from "k6";
 import { workloads } from "../config/workloads.js";
 import { thresholds } from "../config/thresholds.js";
 
-import {sendMessage} from "../scenarios/views/webhook-event.js";
+import {newClientSendMessage} from "../scenarios/views/webhook-event.js";
 import {loadManagerIds} from "../lib/managres.js";
 
 
@@ -15,10 +15,14 @@ if (!workloads[test_type]) {
 }
 
 export const options = {
-    ...workloads[test_type],
+    scenarios: {
+        main: {
+            ...workloads[test_type]["webhook_resp"],
+        },
+    },
     thresholds: {
         ...thresholds.common,
-        ...thresholds[test_type],
+        ...thresholds[test_type]["webhook_resp"],
     },
     tags: {
         test_type: test_type,
@@ -32,8 +36,15 @@ export async function setup() {
     };
 }
 
-
-export default function (data) {
-    sendMessage(data.managerIds);
+export default async function (data) {  // порог до ошибок 220 vus илм 90 avg http/s. Затем pg не выдерживает
+    await newClientSendMessage(data.managerIds);
     sleep(1);
 }
+
+// export default async function (data) {
+//     const payload = await newClientSendMessage(data.managerIds);
+//     for (let i = 0; i < 10; i++) {
+//         await oldClientSendMessage(payload); // не обновляет тварь запись в redis
+//         sleep(1)
+//     }
+// }

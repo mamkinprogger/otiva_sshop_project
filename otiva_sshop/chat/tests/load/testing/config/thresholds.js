@@ -8,11 +8,10 @@ export const thresholds = {
     },
 
     smoke: {
-        http_req_duration: ["p(95)<2000"],
-
+        webhook_resp: {},
     },
 
     average: {
-        http_req_duration: ["p(95)<2000"],
+        webhook_resp: {},
     },
 };

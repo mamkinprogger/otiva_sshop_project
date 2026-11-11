@@ -12,16 +12,26 @@ export const workloads = {
         },
     },
 
-    average: { // можно добавить тут типо avg webhook-resp, avg celery-sending
+    average: {
         webhook_resp: {
             executor: "ramping-vus",
             startVUs: 0,
             stages: [
                 { duration: "1m", target: 150 },
-                { duration: "2m", target: 150 }, //220 верхний порог, за ним уже postgres не выдерживает столько подключений
+                { duration: "2m", target: 150 }, //220 верхний порог, за ним уже postgres не выдерживает столько подключений -> делаем пул подключений
                 { duration: "1m", target: 0 },
             ],
             gracefulRampDown: "10s"
+        },
+        notif_send: {
+            executor: "ramping-vus",
+            startVUs: 0,
+            stages: [
+                { duration: "1m", target: 18 },
+                { duration: "2m", target: 36 }, //50 верхний порог, за ним уже postgres не выдерживает столько подключений -> нужно устанавливать пулл подключений
+                { duration: "1m", target: 0 },
+            ],
+            gracefulRampDown: "15s"
         },
     },
 

@@ -1,0 +1,397 @@
+CELERY TASK METRICS — FUTURE FEATURES
+
+Purpose
+
+Add application-side measurements for the Celery task lifecycle so that
+a load test can answer:
+
+1.  Enqueue duration: how long the application spends submitting a task.
+2.  Queue wait time: how long a task waits between publication and
+    execution.
+3.  Task execution duration: how long one execution attempt takes.
+4.  Task success rate: share of terminal tasks that finish successfully.
+5.  Task failure rate: share of terminal tasks that finish with an
+    error.
+6.  Throughput: number of completed tasks per second.
+
+This document intentionally focuses on adding instrumentation to
+Django/Celery. Prometheus, Grafana dashboards, scraping, and alerting
+are out of scope for now.
+
+Architecture
+
+The measurements belong at different points in the task lifecycle:
+
+Django code | | measured task.delay() / task.apply_async() v Broker
+publication ——– publication timestamp in task headers | | task waits in
+broker queue v Celery worker: task_prerun | queue wait = worker start -
+publication time | | task body executes v Celery worker: task_postrun
+execution duration = task end - task start
+
+Terminal outcome is counted as SUCCESS or FAILURE. RETRY is an
+intermediate state, not a final outcome.
+
+1. Define metrics
+
+Create an app/module, for example:
+
+    monitoring/
+        __init__.py
+        celery_metrics.py
+        celery_helpers.py
+        celery_signals.py
+        apps.py
+
+Install the Python client library:
+
+    pip install prometheus-client
+
+In monitoring/celery_metrics.py:
+
+    from prometheus_client import Counter, Histogram
+
+    TASK_ENQUEUE_DURATION = Histogram(
+        "celery_task_enqueue_duration_seconds",
+        "Time spent submitting Celery tasks",
+        ["task_name"],
+    )
+
+    TASK_QUEUE_WAIT = Histogram(
+        "celery_task_queue_wait_seconds",
+        "Time between task publication and worker start",
+        ["task_name"],
+    )
+
+    TASK_EXECUTION_DURATION = Histogram(
+        "celery_task_execution_duration_seconds",
+        "Duration of one Celery task execution attempt",
+        ["task_name"],
+    )
+
+    TASK_TERMINAL_TOTAL = Counter(
+        "celery_task_terminal_total",
+        "Number of terminal Celery task outcomes",
+        ["task_name", "outcome"],
+    )
+
+    TASK_ENQUEUE_FAILURES = Counter(
+        "celery_task_enqueue_failures_total",
+        "Number of failed attempts to publish Celery tasks",
+        ["task_name"],
+    )
+
+Durations are recorded in seconds. Histograms are appropriate because
+later we may want to inspect distributions and percentiles, not just
+averages.
+
+Keep labels low-cardinality. task_name and outcome are reasonable
+labels. Do NOT add task_id, chat_id, client_id, email, or other
+per-request values as metric labels. Such labels can create an unbounded
+number of time series.
+
+2. Measure enqueue duration
+
+Enqueue duration is measured in the process that sends the task. Wrap
+the existing task.delay() call.
+
+In monitoring/celery_helpers.py:
+
+    from time import perf_counter
+
+    from .celery_metrics import (
+        TASK_ENQUEUE_DURATION,
+        TASK_ENQUEUE_FAILURES,
+    )
+
+
+    def measured_delay(task, *args, **kwargs):
+        task_name = task.name
+        started = perf_counter()
+
+        try:
+            return task.delay(*args, **kwargs)
+        except Exception:
+            TASK_ENQUEUE_FAILURES.labels(task_name=task_name).inc()
+            raise
+        finally:
+            TASK_ENQUEUE_DURATION.labels(
+                task_name=task_name
+            ).observe(perf_counter() - started)
+
+Replace:
+
+    send_notification.delay(chat_id)
+
+with:
+
+    from monitoring.celery_helpers import measured_delay
+
+    measured_delay(send_notification, chat_id)
+
+If the application uses apply_async() with options such as queue,
+countdown, or ETA, create an equivalent measured_apply_async() wrapper
+or generalize the helper to call apply_async().
+
+Important: this measures the duration of the synchronous producer call.
+It includes local task preparation/serialization and the broker publish
+operation as exposed by the Celery client. It does not measure how long
+the task waits in the queue and does not measure task execution.
+
+The wrapper only covers call sites that use it. If tasks are submitted
+from other parts of the application, those call sites must also be
+instrumented. An alternative later is to measure publication centrally
+with Celery publish signals.
+
+3. Measure queue wait and execution duration
+
+Use Celery signals. Add the following to monitoring/celery_signals.py:
+
+    import time
+    from time import perf_counter
+
+    from celery.signals import (
+        before_task_publish,
+        task_prerun,
+        task_postrun,
+    )
+
+    from .celery_metrics import (
+        TASK_QUEUE_WAIT,
+        TASK_EXECUTION_DURATION,
+        TASK_TERMINAL_TOTAL,
+    )
+
+    _task_starts = {}
+
+
+    @before_task_publish.connect(weak=False)
+    def add_publish_timestamp(sender=None, headers=None, **kwargs):
+        if headers is None:
+            return
+
+        headers["metrics_published_at"] = time.time()
+
+
+    @task_prerun.connect(weak=False)
+    def measure_task_start(sender=None, task_id=None, task=None, **kwargs):
+        if task is None:
+            return
+
+        task_name = task.name
+        headers = task.request.headers or {}
+        published_at = headers.get("metrics_published_at")
+
+        if published_at is not None:
+            queue_wait = time.time() - float(published_at)
+
+            if queue_wait >= 0:
+                TASK_QUEUE_WAIT.labels(
+                    task_name=task_name
+                ).observe(queue_wait)
+
+        _task_starts[task_id] = perf_counter()
+
+
+    @task_postrun.connect(weak=False)
+    def measure_task_finish(
+        sender=None,
+        task_id=None,
+        task=None,
+        state=None,
+        **kwargs,
+    ):
+        if task is None:
+            return
+
+        task_name = task.name
+        started = _task_starts.pop(task_id, None)
+
+        if started is not None:
+            TASK_EXECUTION_DURATION.labels(
+                task_name=task_name
+            ).observe(perf_counter() - started)
+
+        if state in ("SUCCESS", "FAILURE"):
+            TASK_TERMINAL_TOTAL.labels(
+                task_name=task_name,
+                outcome=state.lower(),
+            ).inc()
+
+The publication timestamp is placed into message headers by
+before_task_publish. When the worker starts the task, task_prerun reads
+that timestamp and calculates queue wait.
+
+The timestamp uses time.time() because the producer and worker are
+different processes. The execution duration uses perf_counter() because
+both timestamps are taken inside the same worker process and monotonic
+time is preferable for measuring elapsed duration.
+
+Clock synchronization matters: if producer and worker containers run on
+hosts with significantly different clocks, queue-wait measurements will
+be inaccurate. Containers on the same host normally share the host
+clock.
+
+Measurement limitation: before_task_publish runs immediately before the
+actual broker publication. Therefore this queue-wait value includes a
+small part of the publication interval. It is a practical approximation,
+not an exact broker-confirmation-to-worker-start measurement. For
+precise broker event timing, use Celery events (task-sent/task-started)
+or broker-native instrumentation in a later iteration.
+
+4. Load signal handlers
+
+Ensure the signal module is imported once when Django starts.
+
+In monitoring/apps.py:
+
+    from django.apps import AppConfig
+
+
+    class MonitoringConfig(AppConfig):
+        name = "monitoring"
+
+        def ready(self):
+            from . import celery_signals  # noqa: F401
+
+Add the app config to INSTALLED_APPS, for example:
+
+    INSTALLED_APPS = [
+        # ...
+        "monitoring.apps.MonitoringConfig",
+    ]
+
+Do not import the signal module from task bodies. Signal registration
+should happen during application startup.
+
+5. How to interpret outcomes
+
+-   SUCCESS: task completed successfully.
+-   FAILURE: task ended in failure.
+-   RETRY: task is being retried; it is not counted as a terminal
+    outcome.
+-   Throughput: derive from the increase in terminal task count over
+    time. Count SUCCESS and FAILURE separately as well as together.
+
+The execution histogram records each execution attempt. If a task
+retries three times and then succeeds, it contributes four
+execution-duration observations but only one terminal SUCCESS.
+
+The terminal counter above counts tasks that reach task_postrun with
+SUCCESS or FAILURE. A worker crash, hard kill, revoked task, or message
+lost before task_postrun may not be represented as a terminal outcome.
+If those cases matter, add separate instrumentation for revoked,
+rejected, lost, or worker-lifecycle events.
+
+6. Important: Celery prefork and process visibility
+
+Celery commonly uses the prefork pool. In prefork mode, task execution
+happens in child processes. A normal in-memory Python metric registry is
+process-local: a metric updated in a worker child is not automatically
+visible to the Django web process.
+
+This is an important correctness issue. Do not assume that exposing a
+Django /metrics endpoint automatically exposes observations made inside
+Celery worker children.
+
+When metrics are exported later, choose one of these approaches:
+
+A. Prometheus client multiprocess mode: Configure
+PROMETHEUS_MULTIPROC_DIR before Python imports prometheus_client. Mount
+the same shared directory into the processes that produce and expose
+metrics. The directory must be cleaned before a fresh test run, after
+all old processes have stopped. The exporter must use CollectorRegistry
+and MultiProcessCollector.
+
+B. A separate metrics transport/aggregator: Send observations to a
+central StatsD/OTel/metrics collector or expose metrics from a dedicated
+worker-side exporter.
+
+The exact choice depends on how Django and Celery are deployed. If they
+run in separate Compose projects or containers, verify that the
+directory really is shared; two volumes with similar names are not
+necessarily the same volume.
+
+7. Metrics and calculations
+
+Once exported to a time-series system, the intended calculations are:
+
+-   Enqueue duration: histogram distribution; inspect p50/p95/p99 and
+    max.
+-   Queue wait: histogram distribution; inspect p50/p95/p99 and max.
+-   Execution duration: histogram distribution; inspect p50/p95/p99 and
+    max.
+-   Success rate: successful terminal tasks / all terminal tasks * 100
+-   Failure rate: failed terminal tasks / all terminal tasks * 100
+-   Throughput: (successful + failed terminal tasks) per second
+
+Also display success/sec and failure/sec separately. A combined
+throughput number can hide a rise in failures.
+
+Compare throughput with the task arrival rate. For example, if the
+application enqueues 100 tasks/sec but workers complete only 80
+tasks/sec, the backlog will grow by roughly 20 tasks/sec. A low queue
+wait at the beginning of a short test does not prove that the workers
+can sustain the arrival rate.
+
+8. Recommended additional measurements
+
+After the six core metrics work, consider adding:
+
+-   Queue depth: number of tasks waiting in the broker.
+-   Active tasks: tasks currently executing.
+-   Retry count/rate.
+-   Worker count and configured concurrency.
+-   Revoked/rejected task count.
+-   Enqueue failure rate.
+
+Queue depth is especially useful: if throughput reaches a plateau while
+queue depth keeps increasing, workers or a downstream dependency are not
+keeping up.
+
+9. Test isolation and validation
+
+For repeatable load tests:
+
+-   Use a dedicated test environment and preferably a dedicated Celery
+    queue and worker.
+-   Ensure no unrelated background tasks are mixed into the
+    measurements.
+-   If multiple test runs can overlap, isolate them operationally or
+    introduce a controlled test-run dimension in the metrics pipeline.
+    Avoid a unique label for every request/task.
+-   Do not use task_id or chat_id as metric labels.
+-   Run a small test first and verify that each submitted task produces
+    the expected lifecycle measurements.
+-   Test success, failure, and retry paths separately.
+-   Verify that retries increase execution-attempt observations but do
+    not inflate terminal success/failure counts.
+-   Verify metrics from every Celery worker process, not just the web
+    process.
+
+10. Scope boundary: what k6 does
+
+k6 should generate the HTTP/webhook load and measure the externally
+visible request behavior. Django/Celery instrumentation should measure
+internal task lifecycle behavior.
+
+Do not assume that application metrics automatically become k6 metrics.
+They are separate telemetry streams. In a later feature, query the
+metrics backend after a test run and evaluate the results alongside the
+k6 summary, or build a deliberate integration if the test needs to
+consume those values during execution.
+
+Suggested implementation order
+
+1.  Add metric definitions.
+2.  Wrap task submission calls with measured_delay().
+3.  Register Celery lifecycle signal handlers.
+4.  Run a small test with one successful task.
+5.  Test a failing task and a task that retries.
+6.  Confirm metrics are visible across the actual Celery worker process
+    model.
+7.  Only then add metrics export, dashboards, and automated thresholds.
+
+The first implementation should be treated as instrumentation to
+validate, not as production-grade observability until multiprocess
+visibility, clock synchronization, retries, worker crashes, and test
+isolation have been checked.

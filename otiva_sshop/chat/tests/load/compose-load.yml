@@ -88,7 +88,13 @@ services:
       dockerfile: Dockerfile-k6
     image: k6-custom:1.0.0
     container_name: k6
-    command: run -e TEST_TYPE=${TEST_TYPE} /src/testing/tests/${TEST_FILE}
+    command:
+    - run
+    - -e
+    - TEST_TYPE=${TEST_TYPE}
+    - -e
+    - POSTGRES_DSN=postgres://otiva_shop-mamk:otiva_shop-mamk@db:5432/otiva_shop-db-load?sslmode=disable
+    - /src/testing/tests/${TEST_FILE}
     ports:
       - "5665:5665"
     volumes:

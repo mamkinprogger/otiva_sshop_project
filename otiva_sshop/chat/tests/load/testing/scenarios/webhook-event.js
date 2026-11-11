@@ -1,9 +1,11 @@
 import { check } from "k6";
 
-import {redisClient} from "../../lib/redis-client.js";
+import {redisClient} from "../lib/redis-client.js";
 
-import {createMessage, randomString} from "../../lib/data-generator.js";
-import { WebhookClient } from "../../clients/webhook-client.js";
+import {createMessage, randomString} from "../lib/data-generator.js";
+import { WebhookClient } from "../clients/webhook-client.js";
+import {awaitFor} from "../lib/wait-for.js";
+
 
 export async function newClientSendMessage(managerIds) {
     const payload = createMessage({
@@ -14,7 +16,11 @@ export async function newClientSendMessage(managerIds) {
     const client = new WebhookClient();
     const response = client.sendMessage(payload);
 
-    const chatAdded = await redisClient.exists(chatId);
+    const chatAdded = await awaitFor(
+        async () => redisClient.exists(chatId),
+        {timeout: 5}
+    )
+
     check(chatAdded, {'chat written in Redis': (value) => value === 1});
     check(response, {"webhook returns 2xx": (r) => r.status >= 200 && r.status < 300});
 
@@ -29,10 +35,12 @@ export async function managerSendMessage(managerId, chatId) {
 
     const manager = new WebhookClient();
     const response = manager.sendMessage(payload);
-    // console.log(`Manger sended message chat_id: ${chatId}`);
 
-    const chatResponseUpdated = await redisClient.get(chatId);
-    // console.log(`${chatResponseUpdated} Manger answered the message`);
+    const chatResponseUpdated = await awaitFor(
+        async () => redisClient.get(chatId),
+        {timeout: 5}
+    )
+
     check(response, {"webhook returns 2xx": (r) => r.status >= 200 && r.status < 300});
     check(chatResponseUpdated, {
         'response lag written': (value) => value?.split(':').at(-1) === '0',
@@ -47,8 +55,10 @@ export async function oldClientSendMessage(payload) {
     payload.payload.value.content.text = randomString(30);
 
     const response = client.sendMessage(payload);
-    const redisValue = await redisClient.get(payload.payload.value.chat_id);
-    // console.log(`${redisValue} oldClient send message chat_id: ${payload.payload.value.chat_id}`);
+    const redisValue = await awaitFor(
+        async () => redisClient.get(payload.payload.value.chat_id),
+        {timeout: 5}
+    )
 
     check(redisValue, {
         'response lag set': (value) => value?.split(':').at(-1) == payload.payload.value.created,

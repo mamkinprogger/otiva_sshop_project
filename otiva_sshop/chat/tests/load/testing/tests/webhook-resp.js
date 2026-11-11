@@ -3,7 +3,7 @@ import {sleep} from "k6";
 import { workloads } from "../config/workloads.js";
 import { thresholds } from "../config/thresholds.js";
 
-import {newClientSendMessage} from "../scenarios/views/webhook-event.js";
+import {newClientSendMessage} from "../scenarios/webhook-event.js";
 import {loadManagerIds} from "../lib/managres.js";
 
 

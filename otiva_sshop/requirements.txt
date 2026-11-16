@@ -19,6 +19,7 @@ django-debug-toolbar==8.0.0
 executing==2.3.0
 flower==2.2.0
 frozenlist==1.8.0
+gunicorn==27.0.1
 h11==0.16.0
 humanize==4.16.0
 idna==3.20
@@ -37,7 +38,9 @@ prometheus_client==0.26.0
 prompt_toolkit==3.0.53
 propcache==0.5.4
 psutil==7.2.2
-psycopg2-binary==2.9.13
+psycopg==3.3.9
+psycopg-binary==3.3.9
+psycopg-pool==3.3.3
 pure_eval==0.2.4
 Pygments==2.21.0
 pytest==9.2.0
@@ -58,6 +61,7 @@ typing_extensions==4.16.0
 tzdata==2026.6
 tzlocal==5.4.5
 uvicorn==0.54.0
+uvicorn-worker==0.4.0
 vine==5.1.0
 wcwidth==0.9.4
 yarl==1.25.1

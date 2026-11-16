@@ -111,6 +111,16 @@ DATABASES = {
         'PASSWORD': read_secret('pg_password') or os.getenv('POSTGRES_PASSWORD'),
         'HOST': 'db' if DOCKER_START_APP else 'localhost',
         'PORT': os.getenv('POSTGRES_PORT'),
+
+        "CONN_MAX_AGE": 0,
+        "OPTIONS": {
+            "pool": {
+                "min_size": 1,
+                "max_size": 5,
+                "timeout": 15,
+                "max_lifetime": 3600,
+            }
+        }
     }
 }
 

@@ -1,30 +1,32 @@
+import os
+
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from app.misc.redis_misc import sredis
-from app.settings import K6_TEST_ENV
+from app.settings import K6_TEST_ENV, DEBUG
 
 from users.models import Managers
 
 
 class Command(BaseCommand):
-    help = "Prepare test data for k6 load tests"
+    help = "Prepare staff data"
 
     def handle(self, *args, **options):
-        if not K6_TEST_ENV:
-            self.stdout.write(self.style.SUCCESS(f"Cant run command outside of k6"))
+        if not K6_TEST_ENV and not DEBUG:
+            self.stdout.write(self.style.SUCCESS(f"Cant run command outside of k6 or debug mode"))
             return
 
         managers_data = [
             {
-                "manager_id": 11116,
-                "email": "manager1@example.com",
+                "manager_id": 11116 if K6_TEST_ENV else 11111,
+                "email": "manager1@example.com" if K6_TEST_ENV else os.getenv("MANAGERS_EMAILS"),
                 "phone": "+40700000001",
             },
             {
-                "manager_id": 21116,
-                "email": "manager2@example.com",
+                "manager_id": 21116 if K6_TEST_ENV else 21111,
+                "email": "manager2@example.com" if K6_TEST_ENV else os.getenv("MANAGERS_EMAILS"),
                 "phone": "+40700000002",
             },
         ]
@@ -58,14 +60,14 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(
-            self.style.SUCCESS(f"Successfully prepared {len(managers)} managers for k6")
+            self.style.SUCCESS(f"Successfully prepared {len(managers)} {"managers for k6" if K6_TEST_ENV else ""}")
         )
 
         # 2. Create Django superuser.
         User = get_user_model()
 
-        username = "k6"
-        password = "k6"
+        username = "k6" if K6_TEST_ENV else "mamk"
+        password = "k6" if K6_TEST_ENV else "mamk"
         email = "k6_admin@example.com"
 
         user, created = User.objects.get_or_create(

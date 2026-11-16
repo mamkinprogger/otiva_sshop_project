@@ -363,9 +363,13 @@ class ShopEmail:
         }
 
         results = []
-        for email in emails:
+        start = 0
+        while start < len(emails):
             try:
                 with SMTPEmailSender(**sender_conf) as sender:
+                    for i in range(start, len(emails)):
+                        email = emails[i]
+                        start += 1
                         sender.send(email)
                         results.append((email["Message-ID"], True, None))
             except smtplib.SMTPDataError as smtp_err:

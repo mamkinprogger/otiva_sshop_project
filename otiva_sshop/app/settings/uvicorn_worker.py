@@ -1,0 +1,7 @@
+from uvicorn_worker import UvicornWorker
+
+
+class CustomUvicornWorker(UvicornWorker):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.config.lifespan = "off"

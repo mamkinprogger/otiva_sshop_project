@@ -17,18 +17,18 @@ export const workloads = {
             executor: "ramping-vus",
             startVUs: 0,
             stages: [
-                { duration: "1m", target: 150 },
-                { duration: "2m", target: 150 }, //220 верхний порог, за ним уже postgres не выдерживает столько подключений -> делаем пул подключений
+                { duration: "1m", target: 500 },
+                { duration: "2m", target: 500 }, //700 верхний порог, за ним уже p(95) > 2s
                 { duration: "1m", target: 0 },
             ],
-            gracefulRampDown: "10s"
+            gracefulRampDown: "15s"
         },
         notif_send: {
             executor: "ramping-vus",
             startVUs: 0,
             stages: [
-                { duration: "1m", target: 18 },
-                { duration: "2m", target: 36 }, //50 верхний порог, за ним уже postgres не выдерживает столько подключений -> нужно устанавливать пулл подключений
+                { duration: "1m", target: 26 },
+                { duration: "2m", target: 26 }, //36 верхний порог, за ним уже postgres не выдерживает столько подключений -> нужно устанавливать пулл подключений
                 { duration: "1m", target: 0 },
             ],
             gracefulRampDown: "15s"

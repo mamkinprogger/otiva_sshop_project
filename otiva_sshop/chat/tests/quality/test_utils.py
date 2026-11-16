@@ -618,21 +618,28 @@ class TestSendEmailFromYandex:
         mail2["To"] = "two@example.com"
         mail2["Message-ID"] = "<two@example.com>"
 
-        smtp_error = smtplib.SMTPException("SMTP error")
+        mail3 = MIMEMultipart()
+        mail3["To"] = "three@example.com"
+        mail3["Message-ID"] = "<three@example.com>"
 
+        smtp_error = smtplib.SMTPException("SMTP error")
         sender = mocker.MagicMock()
-        sender.send.side_effect = [None, smtp_error]
+        sender.send.side_effect = [None, smtp_error, None]
         sender_class = mocker.patch("chat.utils.SMTPEmailSender")
         sender_class.return_value.__enter__.return_value = sender
 
-        results = shop_email.send_email_from_yandex([mail1, mail2])
+        results = shop_email.send_email_from_yandex([mail1, mail2, mail3])
 
         sender.send.assert_has_calls([
             mocker.call(mail1),
             mocker.call(mail2),
+            mocker.call(mail3)
         ])
-        assert sender.send.call_count == 2
+
+        assert sender_class.call_count == 2
+        assert sender.send.call_count == 3
         assert results == [
             ("<one@example.com>", True, None),
             ("<two@example.com>", False, smtp_error),
+            ("<three@example.com>", True, None)
         ]

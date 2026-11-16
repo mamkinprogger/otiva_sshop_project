@@ -43,7 +43,7 @@ export async function managerSendMessage(managerId, chatId) {
 
     check(response, {"webhook returns 2xx": (r) => r.status >= 200 && r.status < 300});
     check(chatResponseUpdated, {
-        'response lag written': (value) => value?.split(':').at(-1) === '0',
+        'response lag in Redis': (value) => value?.split(':').at(-1) === '0',
     });
     return payload;
 }

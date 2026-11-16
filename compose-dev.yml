@@ -5,12 +5,13 @@ services:
       dockerfile: Dockerfile-dev
     image: django-app-dev:1.0.0
     container_name: django-app
-    command: python -m uvicorn app.asgi:application --host 0.0.0.0
+    command: gunicorn app.asgi:application -c gunicorn.conf.py
     restart: unless-stopped
     expose:
       - 8000
     volumes:
       - ./otiva_sshop/logs:/usr/src/otiva_sshop/logs
+      - ./conf.d/gunicorn.conf.py:/usr/src/otiva_sshop/gunicorn.conf.py:ro
     env_file:
       - ./otiva_sshop/.env
     environment:
@@ -51,11 +52,24 @@ services:
       - default_net
 
 
+  redis:
+    image: redis:8.2-alpine
+    container_name: redis
+    command: redis-server --requirepass otiva_shop_redispass
+    volumes:
+      - redis_data:/data/
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - default_net
+
+
   celery:
     image: django-app-dev:1.0.0
     container_name: celery
     entrypoint: []
-    command: celery -A app.misc.celery_misc worker -n main --loglevel=info -Q chatting,celery
+    command: celery -A app.misc.celery_misc worker -c 8 -n main --loglevel=info -Q chatting,celery
     restart: unless-stopped
     volumes:
       - ./otiva_sshop/logs:/usr/src/otiva_sshop/logs
@@ -103,18 +117,6 @@ services:
     networks:
       - default_net
 
-  redis:
-    image: redis:8.2-alpine
-    container_name: redis
-    command: redis-server --requirepass otiva_shop_redispass
-    volumes:
-      - redis_data:/data/
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    networks:
-      - default_net
-
 
   flower:
     image: django-app-dev:1.0.0
@@ -132,6 +134,7 @@ services:
       - "5555:5555"
     networks:
       - default_net
+
 
   redis-gui:
     image: redis/redisinsight

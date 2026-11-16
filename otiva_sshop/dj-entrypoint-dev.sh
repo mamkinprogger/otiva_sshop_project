@@ -19,7 +19,7 @@ python manage.py migrate
 if [ -n "$K6_TEST_ENV" ]
 then
   echo "Preparing K6 test data..."
-  python manage.py prepare_k6_data
+  python manage.py prepare_staff_data
   echo "K6 test data prepared successfully"
 fi
 

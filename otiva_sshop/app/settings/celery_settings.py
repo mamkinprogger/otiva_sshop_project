@@ -1,13 +1,7 @@
-import sys
-
 from kombu import Queue
 
-from app.settings import TIME_ZONE, REDIS_BROKER, REDIS_RESULT
+from app.settings import TIME_ZONE, REDIS_BROKER, REDIS_RESULT, TESTING
 
-start_argv = sys.argv
-
-TESTING = 'test' in start_argv
-TESTING = TESTING or 'test_coverage' in start_argv or 'pytest' in sys.modules
 
 MIN_MAIL_ID_COUNT = 50
 

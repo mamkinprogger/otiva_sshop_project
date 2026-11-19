@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -39,7 +40,13 @@ SMTP_PORT = int(os.getenv("SMTP_PORT"))
 
 AVITO_STORE_ID = int(os.getenv("AVITO_STORE_ID"))
 
+start_argv = sys.argv
+TESTING = 'test' in start_argv
+TESTING = TESTING or 'test_coverage' in start_argv or 'pytest' in sys.modules
+
 K6_TEST_ENV = bool(os.getenv("K6_TEST_ENV", False))
+LOADTEST_HASH = bytes.fromhex("2c41ad6f14e949453f7714e6054a5dca464377e1a982f378a37667bbef338f6a")
+MAX_ROWS = 1000
 
 
 if os.getenv('ALLOWED_HOSTS'):

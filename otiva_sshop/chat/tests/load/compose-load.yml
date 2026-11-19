@@ -92,8 +92,6 @@ services:
     - run
     - -e
     - TEST_TYPE=${TEST_TYPE}
-    - -e
-    - POSTGRES_DSN=postgres://otiva_shop-mamk:otiva_shop-mamk@db:5432/otiva_shop-db-load?sslmode=disable
     - /src/testing/tests/${TEST_FILE}
     ports:
       - "5665:5665"
@@ -106,6 +104,8 @@ services:
       K6_WEB_DASHBOARD_PORT: "5665"
       K6_WEB_DASHBOARD_PERIOD: "5s"
       K6_WEB_DASHBOARD_EXPORT: "${REPORT}"
+    secrets:
+      - db_access_token
     depends_on:
       - nginx
     networks:
@@ -124,6 +124,9 @@ volumes:
   pg_load_data:
   redis_load_data:
 
+secrets:
+  db_access_token:
+    file: ./secrets/db_access_token.txt
 
 networks:
   default_net:

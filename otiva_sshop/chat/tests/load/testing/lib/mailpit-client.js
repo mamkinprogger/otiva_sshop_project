@@ -15,5 +15,6 @@ export function mailExists(chatId) {
 
     const body = response.json();
 
-    return body.messages_count === 5;
+    const messagesCount = body.messages_count;
+    return messagesCount >= 2 && messagesCount < 6;
 }

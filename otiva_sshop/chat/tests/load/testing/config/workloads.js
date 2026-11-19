@@ -31,16 +31,7 @@ export const workloads = {
                 { duration: "2m", target: 26 }, //36 верхний порог, за ним уже postgres не выдерживает столько подключений -> нужно устанавливать пулл подключений
                 { duration: "1m", target: 0 },
             ],
-            gracefulRampDown: "15s"
+            gracefulRampDown: "30s"
         },
-    },
-
-    stress: {
-        stages: [
-            { duration: "2m", target: 50 },
-            { duration: "3m", target: 100 },
-            { duration: "3m", target: 200 },
-            { duration: "2m", target: 0 },
-        ],
     },
 };

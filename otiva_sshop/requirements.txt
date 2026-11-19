@@ -8,12 +8,12 @@ attrs==26.1.0
 billiard==4.3.2
 celery==5.6.3
 celery-types==0.26.0
-click==8.5.0
+click==8.5.1
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.4.1
 colorama==0.4.6
-coverage==7.17.2
+coverage==7.17.3
 Django==5.2.19
 django-debug-toolbar==8.0.0
 executing==2.3.0
@@ -21,7 +21,7 @@ flower==2.2.0
 frozenlist==1.8.0
 gunicorn==27.0.1
 h11==0.16.0
-humanize==4.16.0
+humanize==4.17.0
 idna==3.20
 iniconfig==2.3.1
 ipython==9.18.1
@@ -44,7 +44,7 @@ psycopg-pool==3.3.3
 pure_eval==0.2.4
 Pygments==2.21.0
 pytest==9.2.0
-pytest-asyncio==1.4.1.post1
+pytest-asyncio==1.5.0
 pytest-cov==7.1.0
 pytest-django==4.14.0
 pytest-mock==3.17.0
@@ -55,7 +55,7 @@ redis==8.1.0
 six==1.17.0
 sqlparse==0.6.1
 stack-data==0.6.3
-tornado==6.6
+tornado==6.6.1
 traitlets==5.16.1
 typing_extensions==4.16.0
 tzdata==2026.6

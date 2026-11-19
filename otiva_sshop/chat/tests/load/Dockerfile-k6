@@ -3,9 +3,7 @@ FROM grafana/xk6:latest AS builder
 
 RUN xk6 --verbose build v2.3.0 \
     --output /tmp/k6 \
-    --with github.com/grafana/xk6-redis@v0.4.5 \
-    --with github.com/grafana/xk6-sql@v1.2.4 \
-    --with github.com/grafana/xk6-sql-driver-postgres@v0.3.3
+    --with github.com/grafana/xk6-redis@v0.4.5
 
 FROM grafana/k6:2.3.0
 

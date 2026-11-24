@@ -26,9 +26,11 @@ export const workloads = {
         notif_send: {
             executor: "ramping-vus",
             startVUs: 0,
+            // 90 для 2х менеджеров
+            // нижние stages рассчитаны на 7 менеджеров
             stages: [
-                { duration: "1m", target: 26 },
-                { duration: "2m", target: 26 }, //36 верхний порог, за ним уже postgres не выдерживает столько подключений -> нужно устанавливать пулл подключений
+                { duration: "1m", target: 200 },
+                { duration: "2m", target: 200 },
                 { duration: "1m", target: 0 },
             ],
             gracefulRampDown: "30s"

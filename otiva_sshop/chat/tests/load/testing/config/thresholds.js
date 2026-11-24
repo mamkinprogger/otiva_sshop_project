@@ -9,9 +9,15 @@ export const thresholds = {
 
     smoke: {
         webhook_resp: {},
+        notif_send: {
+            messages_pending: ["avg<15"]
+        }
     },
 
     average: {
         webhook_resp: {},
+        notif_send: {
+            messages_pending: ["avg<15"]
+        }
     },
 };

@@ -25,3 +25,6 @@ export class DBClient {
         );
     }
 }
+
+const dbAccessToken = open("/run/secrets/db_access_token").trim();
+export const dbClient = new DBClient(dbAccessToken)

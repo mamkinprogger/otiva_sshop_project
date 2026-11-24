@@ -7,6 +7,8 @@ import time
 from email.utils import make_msgid
 from multiprocessing import get_context
 
+from celery import Task
+
 from app.misc.celery_misc import celery
 from app.misc.redis_misc import redis_broker, RedisLocker
 from app.settings import EMAIL_DOMAIN_NAME, MIN_MAIL_ID_COUNT
@@ -139,10 +141,15 @@ def get_manager_messages(pending_key: str, processing_key: str) -> list[int]:
     return msgs
 
 
+def retry_worker(worker: Task):
+    if worker.request.retries < worker.max_retries:
+        raise worker.retry()
+
+
 @celery.task(
     bind=True,
     ignore_result=True,
-    max_retries=8,
+    max_retries=5,
     default_retry_delay=8,
     retry_jitter=True,
     acks_late=True,
@@ -155,14 +162,13 @@ def send_notification_task(self, manager: int, manager_email: str):
 
     msgs = get_manager_messages(manager_key, processing_key)
     if sum(msgs) == 0:
-        logger.info(f"Messages for {manager} already sent")
-        return
+        return logger.info(f"Messages for {manager} already sent")
 
     locker = RedisLocker(redis_broker)
     lock = locker.create_lock_key(manager_key)
     if lock is None:
         logger.info(f"Manager {manager} is locked, retrying later")
-        raise self.retry()
+        return retry_worker(self)
 
     try:
         messages, raw_messages = choose_messages(manager_key, processing_key)
@@ -195,14 +201,13 @@ def notification_retry_task(self, manager: int, manager_email: str):
 
     msgs = get_manager_messages(manager_key, processing_key)
     if sum(msgs) == 0:
-        logger.info(f"Retries for {manager_key} already done")
-        return
+        return logger.info(f"Retries for {manager_key} already done")
 
     locker = RedisLocker(redis_broker)
     lock = locker.create_lock_key(manager_key)
     if lock is None:
         logger.info(f"Manager {manager_key} is locked, retrying later")
-        raise self.retry()
+        return retry_worker(self)
 
     try:
         messages, raw_messages = choose_messages(manager_key, processing_key)
@@ -215,8 +220,8 @@ def notification_retry_task(self, manager: int, manager_email: str):
     except Exception as e:
         logger.error(f"RetryMsg_Task {repr(e)}", exc_info=True)
     else:
-        if fails and self.request.retries < self.max_retries:
-            raise self.retry()
+        if fails:
+            retry_worker(self)
     finally:
         locker.release_locking(lock)
         get_send_shipping(start_task, sys.argv)

@@ -2,7 +2,7 @@ import http from "k6/http";
 
 const MAILPIT_URL = "http://mailpit:8025";
 
-export function mailExists(chatId) {
+export function getMailsCount(chatId) {
     const query = `subject:"${chatId}"`;
 
     const response = http.get(
@@ -15,6 +15,5 @@ export function mailExists(chatId) {
 
     const body = response.json();
 
-    const messagesCount = body.messages_count;
-    return messagesCount >= 2 && messagesCount < 6;
+    return body.messages_count;
 }

@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from typing import Any
 
 from app.misc.redis_misc import sredis, redis_broker
+from app.utils import SideDBWorker
 from chat.db_orm import orm_get_or_create_client_from_his_msg, orm_update_client_emails_history, orm_update_manager_load
 from chat.utils import ShopEmail, MessageFieldsException
 from goods.db_orm import orm_get_avito_product
@@ -131,7 +132,9 @@ class EmailNotification:
                 mail["prev_email"] = email_id
                 continue
 
-            thread = threading.Thread(target=self.update_client_emails, args=(result,))
+            thread = threading.Thread(
+                target=SideDBWorker(self.update_client_emails, result).thread
+            )
             thread.start()
             threads.append(thread)
             updated_clients.add(client_id)
@@ -248,9 +251,16 @@ def load_and_extend_data_for_email(manager_id: int, msgs: list[dict]) -> dict:
                 [
                     sequence,
                     executor.submit(
-                        load_fields_to_send_on_email,
-                        manager_id, message["client_id"], message["chat_id"],
-                        message["call"], message["item_id"], message["read"], message["skipped_msgs"]
+                        SideDBWorker(
+                            load_fields_to_send_on_email,
+                            manager_id,
+                            message["client_id"],
+                            message["chat_id"],
+                            message["call"],
+                            message["item_id"],
+                            message["read"],
+                            message["skipped_msgs"],
+                        ).thread
                     )
                 ]
                 for sequence, message in messages.items()

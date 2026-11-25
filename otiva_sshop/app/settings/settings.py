@@ -45,7 +45,7 @@ TESTING = 'test' in start_argv
 TESTING = TESTING or 'test_coverage' in start_argv or 'pytest' in sys.modules
 
 K6_TEST_ENV = bool(os.getenv("K6_TEST_ENV", False))
-LOADTEST_HASH = bytes.fromhex("2c41ad6f14e949453f7714e6054a5dca464377e1a982f378a37667bbef338f6a")
+LOADTEST_HASH = bytes.fromhex("7fa0c63c1e5db8d52a41acf1a4072eb27a911090b12a1bac93a1a11572b18fa0")
 MAX_ROWS = 1000
 
 

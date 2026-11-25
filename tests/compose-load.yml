@@ -4,7 +4,7 @@ services:
     image: django-app-load:1.0.0
     volumes: []
     env_file:
-      - .\otiva_sshop\chat\tests\load\.env
+      - .\tests\.env
     environment:
       K6_TEST_ENV: true
     networks:
@@ -26,7 +26,7 @@ services:
     container_name: celery-load
     volumes: []
     env_file:
-      - .\otiva_sshop\chat\tests\load\.env
+      - .\tests\.env
     environment:
       K6_TEST_ENV: true
     networks:
@@ -38,7 +38,7 @@ services:
     container_name: celery-make-ids-load
     volumes: []
     env_file:
-      - .\otiva_sshop\chat\tests\load\.env
+      - .\tests\.env
     environment:
       K6_TEST_ENV: true
     networks:
@@ -49,7 +49,7 @@ services:
     container_name: celery-beat-load
     volumes: []
     env_file:
-      - .\otiva_sshop\chat\tests\load\.env
+      - .\tests\.env
     environment:
       K6_TEST_ENV: true
     networks:
@@ -69,7 +69,7 @@ services:
     environment:
       K6_TEST_ENV: true
     env_file:
-      - .\otiva_sshop\chat\tests\load\.env
+      - .\tests\.env
     networks:
       - default_net
 
@@ -84,7 +84,7 @@ services:
 
   k6:
     build:
-      context: ./otiva_sshop/chat/tests/load
+      context: ./tests
       dockerfile: Dockerfile-k6
     image: k6-custom:1.0.0
     container_name: k6
@@ -96,8 +96,8 @@ services:
     ports:
       - "5665:5665"
     volumes:
-      - ./otiva_sshop/chat/tests/load/_reports:/reports
-      - ./otiva_sshop/chat/tests/load/testing:/src/testing
+      - ./tests/_reports/${REPORT_NAME}:/reports
+      - ./${LOADTEST}/testing:/src/testing
     environment:
       K6_WEB_DASHBOARD: "true"
       K6_WEB_DASHBOARD_HOST: "0.0.0.0"

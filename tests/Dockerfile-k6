@@ -11,7 +11,7 @@ COPY --from=builder /tmp/k6 /usr/bin/k6
 
 WORKDIR /src
 
-COPY ./k6-entrypoint.sh .
+COPY k6-entrypoint.sh .
 RUN sed -i 's/\r$//g' /src/k6-entrypoint.sh
 RUN chmod +x /src/k6-entrypoint.sh
 
